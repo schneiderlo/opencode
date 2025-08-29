@@ -256,6 +256,26 @@ func (m *messagesComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cache.Clear()
 			cmds = append(cmds, m.renderView())
 		}
+	case opencode.EventListResponseEventHeavyPlanGenerated:
+		if msg.Properties.SessionID == m.app.Session.ID {
+			cmds = append(cmds, m.renderView())
+		}
+	case opencode.EventListResponseEventHeavyTaskStarted:
+		if msg.Properties.SessionID == m.app.Session.ID {
+			cmds = append(cmds, m.renderView())
+		}
+	case opencode.EventListResponseEventHeavyTaskCompleted:
+		if msg.Properties.SessionID == m.app.Session.ID {
+			cmds = append(cmds, m.renderView())
+		}
+	case opencode.EventListResponseEventHeavyTaskFailed:
+		if msg.Properties.SessionID == m.app.Session.ID {
+			cmds = append(cmds, m.renderView())
+		}
+	case opencode.EventListResponseEventHeavySynthesisStarted:
+		if msg.Properties.SessionID == m.app.Session.ID {
+			cmds = append(cmds, m.renderView())
+		}
 	case opencode.EventListResponseEventPermissionUpdated:
 		m.tail = true
 		return m, m.renderView()
@@ -793,6 +813,55 @@ func (m *messagesComponent) renderView() tea.Cmd {
 			}
 		}
 
+		// Render Heavy Mode plan approval prompt when a plan is pending and not rejected
+		if m.app.PendingPlan != nil && !m.app.PlanRejected && m.app.Session.ID != "" {
+			plan := m.app.PendingPlan
+			lines := []string{}
+			if strings.TrimSpace(plan.OriginalQuery) != "" {
+				lines = append(lines, "I've broken your query into "+strconv.Itoa(len(plan.SubTasks))+" sub-tasks:")
+				lines = append(lines, "")
+			} else {
+				lines = append(lines, "I've broken the task into "+strconv.Itoa(len(plan.SubTasks))+" sub-tasks:")
+				lines = append(lines, "")
+			}
+			for _, st := range plan.SubTasks {
+				prefix := "[" + strconv.Itoa(st.ID) + "] "
+				entry := prefix + st.Question
+				if strings.TrimSpace(st.Deliverable) != "" {
+					entry += "\n    → " + st.Deliverable
+				}
+				lines = append(lines, entry)
+			}
+			lines = append(lines, "")
+			hint := m.app.HeavyApprovalMessage
+			if strings.TrimSpace(hint) == "" {
+				hint = "Execute this plan? (Y/n)"
+			}
+			lines = append(lines, hint)
+
+			content := strings.Join(lines, "\n")
+			content = styles.NewStyle().Width(width - 6).Render(content)
+			content = renderContentBlock(
+				m.app,
+				content,
+				width,
+				WithBorderColor(t.Primary()),
+			)
+			blocks = append(blocks, content)
+			lineCount += lipgloss.Height(content) + 1
+
+			// Render dashboard if tasks exist and either no plan is pending OR plan was rejected
+		} else if m.app.Session.ID != "" && len(m.app.HeavyTasks) > 0 && (m.app.Session.ID == m.app.HeavyTaskParentSessionID || (m.app.Session.ParentID != "" && m.app.Session.ParentID == m.app.HeavyTaskParentSessionID)) && (m.app.PendingPlan == nil || m.app.PlanRejected) {
+			var dashboardContent string
+			if m.app.Session.ParentID == "" {
+				dashboardContent = m.renderMainDashboard(width)
+			} else {
+				dashboardContent = m.renderSubAgentDashboard(width)
+			}
+			blocks = append(blocks, dashboardContent)
+			lineCount += lipgloss.Height(dashboardContent) + 1
+		}
+
 		final := []string{}
 		clipboard := []string{}
 		var selection *selection
@@ -986,6 +1055,204 @@ func (m *messagesComponent) renderHeader() string {
 		Render(header)
 
 	return "\n" + header + "\n"
+}
+
+func (m *messagesComponent) renderMainDashboard(width int) string {
+	t := theme.CurrentTheme()
+	// To keep order stable, gather task IDs and sort
+	ids := make([]int, 0, len(m.app.HeavyTasks))
+	for id := range m.app.HeavyTasks {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+
+	// Check if plan was rejected
+	planRejected := m.app.PlanRejected && m.app.PendingPlan != nil
+
+	lines := []string{"HEAVY MULTI-AGENT MODE", "", "PLAN:"}
+
+	// Add rejection notice if plan was rejected
+	if planRejected {
+		lines = append(lines, "❌ PLAN REJECTED - NOT EXECUTED", "")
+	}
+
+	for _, id := range ids {
+		st := m.app.HeavyTasks[id]
+		icon := "⬜"
+		switch st.Status {
+		case "running":
+			icon = "⏳"
+		case "completed":
+			icon = "✅"
+		case "failed":
+			icon = "❌"
+		}
+		line := fmt.Sprintf("%s [Task %d] %s", icon, id, st.Question)
+		if st.Model != "" {
+			line += fmt.Sprintf(" (Model: %s)", st.Model)
+		}
+		lines = append(lines, line)
+	}
+	lines = append(lines, "")
+
+	// Only show synthesis status if plan wasn't rejected
+	if !planRejected && m.app.HeavySynthesis != "" {
+		lines = append(lines, "SYNTHESIS:")
+		switch m.app.HeavySynthesis {
+		case "running":
+			lines = append(lines, "⏳ Compiling final report...")
+		case "completed":
+			lines = append(lines, "✅ Synthesis complete!")
+		default:
+			lines = append(lines, "⏳ Processing...")
+		}
+	}
+
+	// Controls hint for discoverability
+	lines = append(lines, "")
+	if planRejected {
+		lines = append(lines, "Plan was rejected and not executed. You can start a new conversation to try again.")
+	} else {
+		lines = append(lines, "Thread Navigation (Ctrl+h): [o] latest, [b] back, [1-9] by task ID")
+	}
+
+	content := strings.Join(lines, "\n")
+	content = styles.NewStyle().Width(width - 6).Render(content)
+
+	// Use different border color for rejected plans
+	borderColor := t.BackgroundElement()
+	if planRejected {
+		borderColor = t.Error()
+	}
+
+	return renderContentBlock(
+		m.app,
+		content,
+		width,
+		WithBorderColor(borderColor),
+	)
+}
+
+func (m *messagesComponent) renderSubAgentDashboard(width int) string {
+	t := theme.CurrentTheme()
+
+	// 1. Get tasks and sort them
+	ids := make([]int, 0, len(m.app.HeavyTasks))
+	for id := range m.app.HeavyTasks {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+
+	// 2. Find current task
+	currentTaskID := -1
+	for id, task := range m.app.HeavyTasks {
+		if task.ChildSessionID == m.app.Session.ID {
+			currentTaskID = id
+			break
+		}
+	}
+
+	if currentTaskID == -1 {
+		return ""
+	}
+
+	// 3. Calculate available width and how many nodes can fit
+	const nodeWidth = 7      // e.g., "[ ✅ 4 ]"
+	const connectorWidth = 2 // "──"
+	const padding = 4        // Left/right padding
+	availableWidth := width - 6 - padding
+	maxNodes := (availableWidth + connectorWidth) / (nodeWidth + connectorWidth)
+	if maxNodes < 1 {
+		maxNodes = 1
+	}
+
+	// 4. Determine window of tasks to display
+	startIndex := 0
+	endIndex := len(ids)
+
+	if len(ids) > maxNodes {
+		centerIndex := -1
+		for i, id := range ids {
+			if id == currentTaskID {
+				centerIndex = i
+				break
+			}
+		}
+
+		startOffset := maxNodes / 2
+		startIndex = centerIndex - startOffset
+		endIndex = startIndex + maxNodes
+
+		if startIndex < 0 {
+			startIndex = 0
+			endIndex = maxNodes
+		}
+		if endIndex > len(ids) {
+			endIndex = len(ids)
+			startIndex = endIndex - maxNodes
+		}
+	}
+
+	showLeftEllipsis := startIndex > 0
+	showRightEllipsis := endIndex < len(ids)
+
+	// 5. Build the timeline string
+	var timelineParts []string
+	if showLeftEllipsis {
+		timelineParts = append(timelineParts, "...")
+	}
+
+	for i := startIndex; i < endIndex; i++ {
+		taskID := ids[i]
+		task := m.app.HeavyTasks[taskID]
+		icon := "⬜"
+		switch task.Status {
+		case "running":
+			icon = "⏳"
+		case "completed":
+			icon = "✅"
+		case "failed":
+			icon = "❌"
+		}
+		node := fmt.Sprintf("[ %s %d ]", icon, taskID)
+		if taskID == currentTaskID {
+			node = styles.NewStyle().Foreground(t.Primary()).Bold(true).Render(node)
+		}
+		timelineParts = append(timelineParts, node)
+	}
+
+	if showRightEllipsis {
+		timelineParts = append(timelineParts, "...")
+	}
+
+	timeline := strings.Join(timelineParts, "──")
+
+	// 6. Build current task details
+	currentTask := m.app.HeavyTasks[currentTaskID]
+	taskDetails := fmt.Sprintf("CURRENT TASK (%d/%d):\n%s", currentTaskID, len(ids), currentTask.Question)
+
+	// 7. Build help text
+	helpText := fmt.Sprintf("(Ctrl+h, b to return to main dashboard)")
+
+	// 8. Combine and style
+	lines := []string{
+		"SUB-AGENT VIEW",
+		"",
+		timeline,
+		"",
+		taskDetails,
+		"",
+		helpText,
+	}
+
+	content := strings.Join(lines, "\n")
+	content = styles.NewStyle().Width(width - 6).Render(content)
+	return renderContentBlock(
+		m.app,
+		content,
+		width,
+		WithBorderColor(t.Accent()),
+	)
 }
 
 func formatTokensAndCost(

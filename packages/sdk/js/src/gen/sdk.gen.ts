@@ -23,6 +23,8 @@ import type {
   SessionUpdateResponses,
   SessionChildrenData,
   SessionChildrenResponses,
+  SessionHeavyRespondPlanData,
+  SessionHeavyRespondPlanResponses,
   SessionInitData,
   SessionInitResponses,
   SessionAbortData,
@@ -196,6 +198,24 @@ class Config extends _HeyApiClient {
     return (options?.client ?? this._client).get<ConfigProvidersResponses, unknown, ThrowOnError>({
       url: "/config/providers",
       ...options,
+    })
+  }
+}
+
+class Heavy extends _HeyApiClient {
+  /**
+   * Respond to a heavy mode plan (approve/reject)
+   */
+  public respondPlan<ThrowOnError extends boolean = false>(
+    options: Options<SessionHeavyRespondPlanData, ThrowOnError>,
+  ) {
+    return (options.client ?? this._client).post<SessionHeavyRespondPlanResponses, unknown, ThrowOnError>({
+      url: "/session/{id}/heavy/respond-plan",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
     })
   }
 }
@@ -412,6 +432,7 @@ class Session extends _HeyApiClient {
       ...options,
     })
   }
+  heavy = new Heavy({ client: this._client })
 }
 
 class Command extends _HeyApiClient {

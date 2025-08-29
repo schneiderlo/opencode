@@ -20,6 +20,8 @@ import PROMPT_INITIALIZE from "../session/prompt/initialize.txt"
 import PROMPT_PLAN from "../session/prompt/plan.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 
+import * as HeavyWorkflow from "./heavy"
+
 import { App } from "../app/app"
 import { Bus } from "../bus"
 import { Config } from "../config/config"
@@ -152,12 +154,19 @@ export namespace Session {
         }[]
       >()
 
+      const heavyPlan = new Map<string, HeavyWorkflow.PlannerOutput>()
+      const heavyApproval = new Map<string, (approved: boolean) => void>()
+      const heavyResults = new Map<string, HeavyWorkflow.ExecutorTaskResult[]>()
+
       return {
         sessions,
         messages,
         pending,
         autoCompacting,
         queued,
+        heavyPlan,
+        heavyApproval,
+        heavyResults,
       }
     },
     async (state) => {
@@ -366,6 +375,7 @@ export namespace Session {
     providerID: z.string(),
     modelID: z.string(),
     agent: z.string().optional(),
+    mode: z.literal("heavy").optional(),
     system: z.string().optional(),
     tools: z.record(z.boolean()).optional(),
     parts: z.array(
@@ -762,7 +772,7 @@ export namespace Session {
       id: Identifier.ascending("message"),
       role: "assistant",
       system,
-      mode: inputAgent,
+      mode: input.mode === "heavy" ? "heavy" : inputAgent,
       path: {
         cwd: app.path.cwd,
         root: app.path.root,
@@ -788,6 +798,18 @@ export namespace Session {
       await Bus.publish(MessageV2.Event.Removed, { sessionID: input.sessionID, messageID: assistantMsg.id })
     })
     const tools: Record<string, AITool> = {}
+
+    // Heavy mode: run planner, publish plan for approval, wait for response, then proceed.
+    if (input.mode === "heavy" || inputAgent === "heavy") {
+      const processor = createProcessor(assistantMsg, model.info)
+      return HeavyWorkflow.runHeavyWorkflow({
+        input,
+        assistantMsg,
+        abortSignal: abort.signal,
+        state: state(),
+        processor,
+      })
+    }
 
     const processor = createProcessor(assistantMsg, model.info)
 
@@ -1737,6 +1759,14 @@ export namespace Session {
     constructor(public readonly sessionID: string) {
       super(`Session ${sessionID} is busy`)
     }
+  }
+
+  export function respondPlan(input: { sessionID: string; approved: boolean }) {
+    const resolver = state().heavyApproval.get(input.sessionID)
+    if (!resolver) return false
+    state().heavyApproval.delete(input.sessionID)
+    resolver(input.approved)
+    return true
   }
 
   export async function initialize(input: {

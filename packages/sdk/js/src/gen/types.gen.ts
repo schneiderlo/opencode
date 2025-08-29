@@ -20,9 +20,6 @@ export type Event =
       type: "message.part.removed"
     } & EventMessagePartRemoved)
   | ({
-      type: "storage.write"
-    } & EventStorageWrite)
-  | ({
       type: "permission.updated"
     } & EventPermissionUpdated)
   | ({
@@ -31,6 +28,27 @@ export type Event =
   | ({
       type: "file.edited"
     } & EventFileEdited)
+  | ({
+      type: "storage.write"
+    } & EventStorageWrite)
+  | ({
+      type: "heavy.plan.generated"
+    } & EventHeavyPlanGenerated)
+  | ({
+      type: "heavy.task.started"
+    } & EventHeavyTaskStarted)
+  | ({
+      type: "heavy.task.completed"
+    } & EventHeavyTaskCompleted)
+  | ({
+      type: "heavy.task.failed"
+    } & EventHeavyTaskFailed)
+  | ({
+      type: "heavy.synthesis.started"
+    } & EventHeavySynthesisStarted)
+  | ({
+      type: "heavy.synthesis.completed"
+    } & EventHeavySynthesisCompleted)
   | ({
       type: "session.updated"
     } & EventSessionUpdated)
@@ -206,6 +224,12 @@ export type Part =
   | ({
       type: "agent"
     } & AgentPart)
+  | ({
+      type: "heavy_plan"
+    } & HeavyPlanPart)
+  | ({
+      type: "heavy_agent_report"
+    } & HeavyAgentReportPart)
 
 export type TextPart = {
   id: string
@@ -409,6 +433,32 @@ export type AgentPart = {
     start: number
     end: number
   }
+  input?: unknown
+  output?: unknown
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type HeavyPlanPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: "heavy_plan"
+  plan?: unknown
+}
+
+export type HeavyAgentReportPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: "heavy_agent_report"
+  taskId: number
+  taskQuestion: string
+  taskDeliverable: string
+  report: string
+  model: string
+  childSessionID: string
 }
 
 export type EventMessagePartRemoved = {
@@ -462,6 +512,66 @@ export type EventFileEdited = {
   type: "file.edited"
   properties: {
     file: string
+  }
+}
+
+export type EventHeavyPlanGenerated = {
+  type: "heavy.plan.generated"
+  properties: {
+    sessionID: string
+    plan: {
+      original_query: string
+      sub_tasks: Array<{
+        id: number
+        question: string
+        deliverable: string
+      }>
+    }
+  }
+}
+
+export type EventHeavyTaskStarted = {
+  type: "heavy.task.started"
+  properties: {
+    sessionID: string
+    taskId: number
+    question: string
+    model: string
+    childSessionID: string
+  }
+}
+
+export type EventHeavyTaskCompleted = {
+  type: "heavy.task.completed"
+  properties: {
+    sessionID: string
+    taskId: number
+    report: string
+    childSessionID: string
+  }
+}
+
+export type EventHeavyTaskFailed = {
+  type: "heavy.task.failed"
+  properties: {
+    sessionID: string
+    taskId: number
+    error: string
+    childSessionID: string
+  }
+}
+
+export type EventHeavySynthesisStarted = {
+  type: "heavy.synthesis.started"
+  properties: {
+    sessionID: string
+  }
+}
+
+export type EventHeavySynthesisCompleted = {
+  type: "heavy.synthesis.completed"
+  properties: {
+    sessionID: string
   }
 }
 
@@ -762,6 +872,10 @@ export type Config = {
       }>
     }
   }
+  /**
+   * Heavy Multi-Agent Mode configuration
+   */
+  heavy?: HeavyConfig
 }
 
 export type KeybindsConfig = {
@@ -1085,6 +1199,33 @@ export type McpRemoteConfig = {
 
 export type LayoutConfig = "auto" | "stretch"
 
+export type HeavyConfig = {
+  planner_model?: string
+  synthesizer_model?: string
+  max_concurrent_agents: number
+  strategy: "parallel" | "sequential" | "tree"
+  agent_pool_models?: Array<string>
+  /**
+   * Defines the output from sub-agents: 'report' for a concise summary, 'full_text' for the complete generation including tool usage.
+   */
+  sub_agent_output: "report" | "full_text"
+  /**
+   * When enabled, saves individual agent reports as separate message parts for later review and analysis.
+   */
+  save_agent_work: boolean
+  tools?: {
+    read_only?: boolean
+    allowed_tools?: Array<string>
+    denied_tools?: Array<string>
+  }
+  retry?: {
+    max_attempts: number
+    backoff_ms: number
+    rotate_models: boolean
+    fail_on_empty: boolean
+  }
+}
+
 export type _Error = {
   data: {
     [key: string]: unknown
@@ -1391,6 +1532,59 @@ export type SessionChildrenResponses = {
 
 export type SessionChildrenResponse = SessionChildrenResponses[keyof SessionChildrenResponses]
 
+export type SessionHeavyRespondPlanData = {
+  body?: {
+    approved: boolean
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: never
+  url: "/session/{id}/heavy/respond-plan"
+}
+
+export type SessionHeavyRespondPlanResponses = {
+  /**
+   * Response recorded
+   */
+  200: boolean
+}
+
+export type SessionHeavyRespondPlanResponse = SessionHeavyRespondPlanResponses[keyof SessionHeavyRespondPlanResponses]
+
+export type SessionHeavyGetAgentReportsData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: never
+  url: "/session/{id}/heavy/agent-reports"
+}
+
+export type SessionHeavyGetAgentReportsResponses = {
+  /**
+   * Agent reports retrieved successfully
+   */
+  200: Array<{
+    taskId: number
+    taskQuestion: string
+    taskDeliverable: string
+    report: string
+    model: string
+    childSessionID: string
+    timestamp: number
+  }>
+}
+
+export type SessionHeavyGetAgentReportsResponse =
+  SessionHeavyGetAgentReportsResponses[keyof SessionHeavyGetAgentReportsResponses]
+
 export type SessionInitData = {
   body?: {
     messageID: string
@@ -1524,6 +1718,7 @@ export type SessionChatData = {
     providerID: string
     modelID: string
     agent?: string
+    mode?: "heavy"
     system?: string
     tools?: {
       [key: string]: boolean

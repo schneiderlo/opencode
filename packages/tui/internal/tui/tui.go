@@ -103,6 +103,157 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		keyString := msg.String()
+		// Heavy thread navigation keys - using Ctrl+h leader sequence pattern
+		if a.app.Session.ID != "" && len(a.app.HeavyTasks) > 0 {
+			// Check for Ctrl+h leader sequence for heavy mode navigation
+			if keyString == "ctrl+h" && !a.app.IsLeaderSequence {
+				a.app.IsLeaderSequence = true
+				return a, nil
+			}
+
+			// Handle heavy mode navigation commands after leader
+			if a.app.IsLeaderSequence {
+				switch keyString {
+				case "o": // Open most recent task thread
+					a.app.IsLeaderSequence = false
+					// pick the highest task id as a simple heuristic for most recent
+					maxID := 0
+					for id := range a.app.HeavyTasks {
+						if id > maxID {
+							maxID = id
+						}
+					}
+					if maxID > 0 {
+						child := a.app.HeavyTasks[maxID].ChildSessionID
+						if strings.TrimSpace(child) != "" {
+							return a, func() tea.Msg {
+								// Fetch the full session object to preserve ParentID
+								sessionInfo, err := a.app.GetSession(context.Background(), child)
+								if err != nil {
+									return toast.NewErrorToast("Failed to get session info")
+								}
+
+								msgs, err := a.app.ListMessages(context.Background(), child)
+								if err != nil {
+									return toast.NewErrorToast("Failed to open thread")
+								}
+								a.app.Session = sessionInfo
+								a.app.Messages = msgs
+								return app.SessionLoadedMsg{}
+							}
+						}
+					}
+					return a, nil
+
+				case "b": // Return to parent session
+					a.app.IsLeaderSequence = false
+					if a.app.Session.ParentID != "" {
+						parentID := a.app.Session.ParentID
+						return a, func() tea.Msg {
+							// Fetch the full session object to preserve ParentID
+							sessionInfo, err := a.app.GetSession(context.Background(), parentID)
+							if err != nil {
+								return toast.NewErrorToast("Failed to return to parent")
+							}
+
+							msgs, err := a.app.ListMessages(context.Background(), parentID)
+							if err != nil {
+								return toast.NewErrorToast("Failed to return to parent")
+							}
+							a.app.Session = sessionInfo
+							a.app.Messages = msgs
+							return app.SessionLoadedMsg{}
+						}
+					}
+					return a, nil
+
+				case "1", "2", "3", "4", "5", "6", "7", "8", "9": // Open specific task by number
+					a.app.IsLeaderSequence = false
+					taskNum := int(keyString[0] - '0')
+					if st, ok := a.app.HeavyTasks[taskNum]; ok {
+						child := st.ChildSessionID
+						if strings.TrimSpace(child) != "" {
+							return a, func() tea.Msg {
+								// Fetch the full session object to preserve ParentID
+								sessionInfo, err := a.app.GetSession(context.Background(), child)
+								if err != nil {
+									return toast.NewErrorToast("Failed to get session info")
+								}
+
+								msgs, err := a.app.ListMessages(context.Background(), child)
+								if err != nil {
+									return toast.NewErrorToast("Failed to open thread")
+								}
+								a.app.Session = sessionInfo
+								a.app.Messages = msgs
+								return app.SessionLoadedMsg{}
+							}
+						}
+					}
+					return a, nil
+
+				case "esc": // Cancel leader sequence
+					a.app.IsLeaderSequence = false
+					return a, nil
+				}
+			}
+		}
+
+		// Quick access: Shift key alone toggles to Heavy agent
+		if keyString == "leftshift" || keyString == "rightshift" {
+			updated, cmd := a.app.SwitchToAgent("heavy")
+			a.app = updated
+			return a, tea.Sequence(cmd, toast.NewInfoToast("Switched to heavy"))
+		}
+
+		// Handle Heavy Mode plan approval when a plan is pending
+		if a.app.PendingPlan != nil {
+			if a.app.PlanRejected {
+				// Don't clear PendingPlan immediately - keep it for dashboard display
+				// Only clear it when user presses any key to continue
+				if keyString != "" {
+					a.app.PendingPlan = nil
+					a.app.PlanRejected = false
+					a.app.HeavyApprovalMessage = ""
+					return a, nil
+				}
+				return a, nil
+			}
+
+			switch keyString {
+			case "y", "Y", "enter":
+				sessionID := a.app.Session.ID
+				a.app.PendingPlan = nil
+				return a, func() tea.Msg {
+					_, err := a.app.Client.Session.Heavy.RespondPlan(
+						context.Background(),
+						sessionID,
+						opencode.SessionHeavyRespondPlanParams{Approved: opencode.F(true)},
+					)
+					if err != nil {
+						slog.Error("Failed to approve heavy plan", "error", err)
+						return toast.NewErrorToast("Failed to approve plan")
+					}
+					return toast.NewSuccessToast("Plan approved")
+				}
+			case "n", "N", "esc":
+				sessionID := a.app.Session.ID
+				a.app.PlanRejected = true
+				a.app.HeavyApprovalMessage = "Plan not executed. Press any key to continue."
+				return a, func() tea.Msg {
+					_, err := a.app.Client.Session.Heavy.RespondPlan(
+						context.Background(),
+						sessionID,
+						opencode.SessionHeavyRespondPlanParams{Approved: opencode.F(false)},
+					)
+					if err != nil {
+						slog.Error("Failed to reject heavy plan", "error", err)
+						return toast.NewErrorToast("Failed to reject plan")
+					}
+					return nil
+				}
+			}
+		}
 
 		if a.app.CurrentPermission.ID != "" {
 			if keyString == "enter" || keyString == "esc" || keyString == "a" {
@@ -134,7 +285,7 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					)
 					if err != nil {
 						slog.Error("Failed to respond to permission request", "error", err)
-						return toast.NewErrorToast("Failed to respond to permission request")()
+						return toast.NewErrorToast("Failed to respond to permission request")
 					}
 					slog.Debug("Responded to permission request", "response", resp)
 					return nil
@@ -465,6 +616,101 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			"Installed the opencode extension in "+msg.Properties.Ide,
 			toast.WithTitle(msg.Properties.Ide+" extension installed"),
 		)
+	case opencode.EventListResponseEventHeavyPlanGenerated:
+		if msg.Properties.SessionID == a.app.Session.ID {
+			// If a new plan is generated for a different session than the last one,
+			// clear out the old state to prevent confusion.
+			if a.app.HeavyTaskParentSessionID != "" && a.app.HeavyTaskParentSessionID != msg.Properties.SessionID {
+				a.app.HeavyTasks = make(map[int]app.HeavyTaskStatus)
+				a.app.HeavySynthesis = ""
+			}
+			a.app.HeavyTaskParentSessionID = msg.Properties.SessionID
+			plan := &app.PlannerOutput{
+				OriginalQuery: msg.Properties.Plan.OriginalQuery,
+				SubTasks:      make([]app.PlannerSubTask, 0, len(msg.Properties.Plan.SubTasks)),
+			}
+			for _, st := range msg.Properties.Plan.SubTasks {
+				plan.SubTasks = append(plan.SubTasks, app.PlannerSubTask{
+					ID:          int(st.ID),
+					Question:    st.Question,
+					Deliverable: st.Deliverable,
+				})
+			}
+			a.app.PendingPlan = plan
+			a.app.PlanRejected = false
+			a.app.HeavyApprovalMessage = "Execute this plan? (Y/n)"
+			
+			// Pre-populate dashboard with all tasks as pending so unstarted tasks are visible immediately after approval
+			if a.app.HeavyTasks == nil {
+				a.app.HeavyTasks = make(map[int]app.HeavyTaskStatus)
+			}
+			for _, st := range plan.SubTasks {
+				a.app.HeavyTasks[st.ID] = app.HeavyTaskStatus{
+					Status:   "pending",
+					Question: st.Question,
+				}
+			}
+
+
+			// Scroll to latest message so the plan prompt is visible without interaction
+			lastID := ""
+			if n := len(a.app.Messages); n > 0 {
+				for i := n - 1; i >= 0; i-- {
+					switch casted := a.app.Messages[i].Info.(type) {
+					case opencode.UserMessage:
+						lastID = casted.ID
+					case opencode.AssistantMessage:
+						lastID = casted.ID
+					}
+					if lastID != "" {
+						break
+					}
+				}
+			}
+			cmds = append(cmds, util.CmdHandler(dialog.ScrollToMessageMsg{MessageID: lastID}))
+		}
+		// allow messages component to handle re-render on this msg (continue to bottom)
+	case opencode.EventListResponseEventHeavyTaskStarted:
+		if a.app.HeavyTaskParentSessionID != "" && msg.Properties.SessionID == a.app.HeavyTaskParentSessionID {
+			if a.app.HeavyTasks == nil {
+				a.app.HeavyTasks = map[int]app.HeavyTaskStatus{}
+			}
+			a.app.HeavyTasks[int(msg.Properties.TaskID)] = app.HeavyTaskStatus{
+				Status:         "running",
+				Model:          msg.Properties.Model,
+				Question:       msg.Properties.Question,
+				ChildSessionID: msg.Properties.ChildSessionID,
+			}
+		}
+		// continue to bottom so messages component can re-render
+	case opencode.EventListResponseEventHeavyTaskCompleted:
+		if a.app.HeavyTaskParentSessionID != "" && msg.Properties.SessionID == a.app.HeavyTaskParentSessionID {
+			status := a.app.HeavyTasks[int(msg.Properties.TaskID)]
+			status.Status = "completed"
+			status.Report = msg.Properties.Report
+			status.ChildSessionID = msg.Properties.ChildSessionID
+			a.app.HeavyTasks[int(msg.Properties.TaskID)] = status
+		}
+		// continue to bottom so messages component can re-render
+	case opencode.EventListResponseEventHeavyTaskFailed:
+		if a.app.HeavyTaskParentSessionID != "" && msg.Properties.SessionID == a.app.HeavyTaskParentSessionID {
+			status := a.app.HeavyTasks[int(msg.Properties.TaskID)]
+			status.Status = "failed"
+			status.Error = msg.Properties.Error
+			status.ChildSessionID = msg.Properties.ChildSessionID
+			a.app.HeavyTasks[int(msg.Properties.TaskID)] = status
+		}
+		// continue to bottom so messages component can re-render
+	case opencode.EventListResponseEventHeavySynthesisStarted:
+		if a.app.HeavyTaskParentSessionID != "" && msg.Properties.SessionID == a.app.HeavyTaskParentSessionID {
+			a.app.HeavySynthesis = "running"
+		}
+		// continue to bottom so messages component can re-render
+	case opencode.EventListResponseEventHeavySynthesisCompleted:
+		if a.app.HeavyTaskParentSessionID != "" && msg.Properties.SessionID == a.app.HeavyTaskParentSessionID {
+			a.app.HeavySynthesis = "completed"
+		}
+		// continue to bottom so messages component can re-render
 	case opencode.EventListResponseEventSessionDeleted:
 		if a.app.Session != nil && msg.Properties.Info.ID == a.app.Session.ID {
 			a.app.Session = &opencode.Session{}
@@ -715,6 +961,159 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		tm, cmd := a.toastManager.Update(msg)
 		a.toastManager = tm
 		cmds = append(cmds, cmd)
+	case opencode.EventListResponse:
+		// Handle heavy.plan.generated via generic event fallback (Go SDK may not have typed variant yet)
+		if msg.Type == "heavy.plan.generated" {
+			// Parse raw JSON to extract plan
+			type rawHeavyPlanGenerated struct {
+				Properties struct {
+					SessionID string `json:"sessionID"`
+					Plan      struct {
+						OriginalQuery string `json:"original_query"`
+						SubTasks      []struct {
+							ID          int64  `json:"id"`
+							Question    string `json:"question"`
+							Deliverable string `json:"deliverable"`
+						} `json:"sub_tasks"`
+					} `json:"plan"`
+				} `json:"properties"`
+			}
+			var raw rawHeavyPlanGenerated
+			if err := json.Unmarshal([]byte(msg.JSON.RawJSON()), &raw); err == nil {
+				if raw.Properties.SessionID == a.app.Session.ID {
+					plan := &app.PlannerOutput{
+						OriginalQuery: raw.Properties.Plan.OriginalQuery,
+						SubTasks:      make([]app.PlannerSubTask, 0, len(raw.Properties.Plan.SubTasks)),
+					}
+					for _, st := range raw.Properties.Plan.SubTasks {
+						plan.SubTasks = append(plan.SubTasks, app.PlannerSubTask{
+							ID:          int(st.ID),
+							Question:    st.Question,
+							Deliverable: st.Deliverable,
+						})
+					}
+					a.app.PendingPlan = plan
+					a.app.PlanRejected = false
+					a.app.HeavyApprovalMessage = "Execute this plan? (Y/n)"
+					// Pre-populate dashboard with all tasks as pending so unstarted tasks are visible
+					a.app.HeavyTasks = map[int]app.HeavyTaskStatus{}
+					for _, st := range plan.SubTasks {
+						a.app.HeavyTasks[st.ID] = app.HeavyTaskStatus{
+							Status:   "pending",
+							Question: st.Question,
+						}
+					}
+					// Ensure the plan prompt is visible by scrolling to the latest message
+					lastID := ""
+					if n := len(a.app.Messages); n > 0 {
+						for i := n - 1; i >= 0; i-- {
+							switch casted := a.app.Messages[i].Info.(type) {
+							case opencode.UserMessage:
+								lastID = casted.ID
+							case opencode.AssistantMessage:
+								lastID = casted.ID
+							}
+							if lastID != "" {
+								break
+							}
+						}
+					}
+					cmds = append(cmds, util.CmdHandler(dialog.ScrollToMessageMsg{MessageID: lastID}))
+				}
+			}
+		}
+		// Handle heavy.task.started
+		if msg.Type == "heavy.task.started" {
+			// Parse raw JSON for portability
+			type rawHeavyTaskStarted struct {
+				Properties struct {
+					SessionID string `json:"sessionID"`
+					TaskId    int    `json:"taskId"`
+					Question  string `json:"question"`
+					Model     string `json:"model"`
+				} `json:"properties"`
+			}
+			var raw rawHeavyTaskStarted
+			if err := json.Unmarshal([]byte(msg.JSON.RawJSON()), &raw); err == nil {
+				if raw.Properties.SessionID == a.app.Session.ID {
+					if a.app.HeavyTasks == nil {
+						a.app.HeavyTasks = map[int]app.HeavyTaskStatus{}
+					}
+					a.app.HeavyTasks[raw.Properties.TaskId] = app.HeavyTaskStatus{
+						Status:   "running",
+						Model:    raw.Properties.Model,
+						Question: raw.Properties.Question,
+					}
+				}
+			}
+		}
+		// Handle heavy.task.completed
+		if msg.Type == "heavy.task.completed" {
+			type rawHeavyTaskCompleted struct {
+				Properties struct {
+					SessionID string `json:"sessionID"`
+					TaskId    int    `json:"taskId"`
+					Report    string `json:"report"`
+				} `json:"properties"`
+			}
+			var raw rawHeavyTaskCompleted
+			if err := json.Unmarshal([]byte(msg.JSON.RawJSON()), &raw); err == nil {
+				if raw.Properties.SessionID == a.app.Session.ID {
+					status := a.app.HeavyTasks[raw.Properties.TaskId]
+					status.Status = "completed"
+					status.Report = raw.Properties.Report
+					a.app.HeavyTasks[raw.Properties.TaskId] = status
+				}
+			}
+		}
+		// Handle heavy.task.failed
+		if msg.Type == "heavy.task.failed" {
+			type rawHeavyTaskFailed struct {
+				Properties struct {
+					SessionID string `json:"sessionID"`
+					TaskId    int    `json:"taskId"`
+					Error     string `json:"error"`
+				} `json:"properties"`
+			}
+			var raw rawHeavyTaskFailed
+			if err := json.Unmarshal([]byte(msg.JSON.RawJSON()), &raw); err == nil {
+				if raw.Properties.SessionID == a.app.Session.ID {
+					status := a.app.HeavyTasks[raw.Properties.TaskId]
+					status.Status = "failed"
+					status.Error = raw.Properties.Error
+					a.app.HeavyTasks[raw.Properties.TaskId] = status
+				}
+			}
+		}
+		// Handle heavy.synthesis.started
+		if msg.Type == "heavy.synthesis.started" {
+			type rawHeavySynthesisStarted struct {
+				Properties struct {
+					SessionID string `json:"sessionID"`
+				} `json:"properties"`
+			}
+			var raw rawHeavySynthesisStarted
+			if err := json.Unmarshal([]byte(msg.JSON.RawJSON()), &raw); err == nil {
+				if raw.Properties.SessionID == a.app.Session.ID {
+					a.app.HeavySynthesis = "running"
+				}
+			}
+		}
+		// Handle heavy.synthesis.completed
+		if msg.Type == "heavy.synthesis.completed" {
+			type rawHeavySynthesisCompleted struct {
+				Properties struct {
+					SessionID string `json:"sessionID"`
+				} `json:"properties"`
+			}
+			var raw rawHeavySynthesisCompleted
+			if err := json.Unmarshal([]byte(msg.JSON.RawJSON()), &raw); err == nil {
+				// Clear synthesis flag for parent session (same logic as strongly-typed handler)
+				if a.app.HeavyTaskParentSessionID != "" && raw.Properties.SessionID == a.app.HeavyTaskParentSessionID {
+					a.app.HeavySynthesis = "completed"
+				}
+			}
+		}
 	case InterruptDebounceTimeoutMsg:
 		// Reset interrupt key state after timeout
 		a.interruptKeyState = InterruptKeyIdle

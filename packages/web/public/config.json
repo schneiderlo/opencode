@@ -1,0 +1,1044 @@
+{
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference for configuration validation"
+    },
+    "theme": {
+      "type": "string",
+      "description": "Theme name to use for the interface"
+    },
+    "keybinds": {
+      "type": "object",
+      "properties": {
+        "leader": {
+          "type": "string",
+          "default": "ctrl+x",
+          "description": "Leader key for keybind combinations\n\ndefault: `ctrl+x`",
+          "examples": [
+            "ctrl+x"
+          ]
+        },
+        "app_help": {
+          "type": "string",
+          "default": "<leader>h",
+          "description": "Show help dialog\n\ndefault: `<leader>h`",
+          "examples": [
+            "<leader>h"
+          ]
+        },
+        "app_exit": {
+          "type": "string",
+          "default": "ctrl+c,<leader>q",
+          "description": "Exit the application\n\ndefault: `ctrl+c,<leader>q`",
+          "examples": [
+            "ctrl+c,<leader>q"
+          ]
+        },
+        "editor_open": {
+          "type": "string",
+          "default": "<leader>e",
+          "description": "Open external editor\n\ndefault: `<leader>e`",
+          "examples": [
+            "<leader>e"
+          ]
+        },
+        "theme_list": {
+          "type": "string",
+          "default": "<leader>t",
+          "description": "List available themes\n\ndefault: `<leader>t`",
+          "examples": [
+            "<leader>t"
+          ]
+        },
+        "project_init": {
+          "type": "string",
+          "default": "<leader>i",
+          "description": "Create/update AGENTS.md\n\ndefault: `<leader>i`",
+          "examples": [
+            "<leader>i"
+          ]
+        },
+        "tool_details": {
+          "type": "string",
+          "default": "<leader>d",
+          "description": "Toggle tool details\n\ndefault: `<leader>d`",
+          "examples": [
+            "<leader>d"
+          ]
+        },
+        "thinking_blocks": {
+          "type": "string",
+          "default": "<leader>b",
+          "description": "Toggle thinking blocks\n\ndefault: `<leader>b`",
+          "examples": [
+            "<leader>b"
+          ]
+        },
+        "session_export": {
+          "type": "string",
+          "default": "<leader>x",
+          "description": "Export session to editor\n\ndefault: `<leader>x`",
+          "examples": [
+            "<leader>x"
+          ]
+        },
+        "session_new": {
+          "type": "string",
+          "default": "<leader>n",
+          "description": "Create a new session\n\ndefault: `<leader>n`",
+          "examples": [
+            "<leader>n"
+          ]
+        },
+        "session_list": {
+          "type": "string",
+          "default": "<leader>l",
+          "description": "List all sessions\n\ndefault: `<leader>l`",
+          "examples": [
+            "<leader>l"
+          ]
+        },
+        "session_timeline": {
+          "type": "string",
+          "default": "<leader>g",
+          "description": "Show session timeline\n\ndefault: `<leader>g`",
+          "examples": [
+            "<leader>g"
+          ]
+        },
+        "session_share": {
+          "type": "string",
+          "default": "<leader>s",
+          "description": "Share current session\n\ndefault: `<leader>s`",
+          "examples": [
+            "<leader>s"
+          ]
+        },
+        "session_unshare": {
+          "type": "string",
+          "default": "none",
+          "description": "Unshare current session\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        },
+        "session_interrupt": {
+          "type": "string",
+          "default": "esc",
+          "description": "Interrupt current session\n\ndefault: `esc`",
+          "examples": [
+            "esc"
+          ]
+        },
+        "session_compact": {
+          "type": "string",
+          "default": "<leader>c",
+          "description": "Compact the session\n\ndefault: `<leader>c`",
+          "examples": [
+            "<leader>c"
+          ]
+        },
+        "session_child_cycle": {
+          "type": "string",
+          "default": "ctrl+right",
+          "description": "Cycle to next child session\n\ndefault: `ctrl+right`",
+          "examples": [
+            "ctrl+right"
+          ]
+        },
+        "session_child_cycle_reverse": {
+          "type": "string",
+          "default": "ctrl+left",
+          "description": "Cycle to previous child session\n\ndefault: `ctrl+left`",
+          "examples": [
+            "ctrl+left"
+          ]
+        },
+        "messages_page_up": {
+          "type": "string",
+          "default": "pgup",
+          "description": "Scroll messages up by one page\n\ndefault: `pgup`",
+          "examples": [
+            "pgup"
+          ]
+        },
+        "messages_page_down": {
+          "type": "string",
+          "default": "pgdown",
+          "description": "Scroll messages down by one page\n\ndefault: `pgdown`",
+          "examples": [
+            "pgdown"
+          ]
+        },
+        "messages_half_page_up": {
+          "type": "string",
+          "default": "ctrl+alt+u",
+          "description": "Scroll messages up by half page\n\ndefault: `ctrl+alt+u`",
+          "examples": [
+            "ctrl+alt+u"
+          ]
+        },
+        "messages_half_page_down": {
+          "type": "string",
+          "default": "ctrl+alt+d",
+          "description": "Scroll messages down by half page\n\ndefault: `ctrl+alt+d`",
+          "examples": [
+            "ctrl+alt+d"
+          ]
+        },
+        "messages_first": {
+          "type": "string",
+          "default": "ctrl+g",
+          "description": "Navigate to first message\n\ndefault: `ctrl+g`",
+          "examples": [
+            "ctrl+g"
+          ]
+        },
+        "messages_last": {
+          "type": "string",
+          "default": "ctrl+alt+g",
+          "description": "Navigate to last message\n\ndefault: `ctrl+alt+g`",
+          "examples": [
+            "ctrl+alt+g"
+          ]
+        },
+        "messages_copy": {
+          "type": "string",
+          "default": "<leader>y",
+          "description": "Copy message\n\ndefault: `<leader>y`",
+          "examples": [
+            "<leader>y"
+          ]
+        },
+        "messages_undo": {
+          "type": "string",
+          "default": "<leader>u",
+          "description": "Undo message\n\ndefault: `<leader>u`",
+          "examples": [
+            "<leader>u"
+          ]
+        },
+        "messages_redo": {
+          "type": "string",
+          "default": "<leader>r",
+          "description": "Redo message\n\ndefault: `<leader>r`",
+          "examples": [
+            "<leader>r"
+          ]
+        },
+        "model_list": {
+          "type": "string",
+          "default": "<leader>m",
+          "description": "List available models\n\ndefault: `<leader>m`",
+          "examples": [
+            "<leader>m"
+          ]
+        },
+        "model_cycle_recent": {
+          "type": "string",
+          "default": "f2",
+          "description": "Next recent model\n\ndefault: `f2`",
+          "examples": [
+            "f2"
+          ]
+        },
+        "model_cycle_recent_reverse": {
+          "type": "string",
+          "default": "shift+f2",
+          "description": "Previous recent model\n\ndefault: `shift+f2`",
+          "examples": [
+            "shift+f2"
+          ]
+        },
+        "agent_list": {
+          "type": "string",
+          "default": "<leader>a",
+          "description": "List agents\n\ndefault: `<leader>a`",
+          "examples": [
+            "<leader>a"
+          ]
+        },
+        "agent_cycle": {
+          "type": "string",
+          "default": "tab",
+          "description": "Next agent\n\ndefault: `tab`",
+          "examples": [
+            "tab"
+          ]
+        },
+        "agent_cycle_reverse": {
+          "type": "string",
+          "default": "shift+tab",
+          "description": "Previous agent\n\ndefault: `shift+tab`",
+          "examples": [
+            "shift+tab"
+          ]
+        },
+        "input_clear": {
+          "type": "string",
+          "default": "ctrl+c",
+          "description": "Clear input field\n\ndefault: `ctrl+c`",
+          "examples": [
+            "ctrl+c"
+          ]
+        },
+        "input_paste": {
+          "type": "string",
+          "default": "ctrl+v",
+          "description": "Paste from clipboard\n\ndefault: `ctrl+v`",
+          "examples": [
+            "ctrl+v"
+          ]
+        },
+        "input_submit": {
+          "type": "string",
+          "default": "enter",
+          "description": "Submit input\n\ndefault: `enter`",
+          "examples": [
+            "enter"
+          ]
+        },
+        "input_newline": {
+          "type": "string",
+          "default": "shift+enter,ctrl+j",
+          "description": "Insert newline in input\n\ndefault: `shift+enter,ctrl+j`",
+          "examples": [
+            "shift+enter,ctrl+j"
+          ]
+        },
+        "switch_mode": {
+          "type": "string",
+          "default": "none",
+          "description": "@deprecated use agent_cycle. Next mode\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        },
+        "switch_mode_reverse": {
+          "type": "string",
+          "default": "none",
+          "description": "@deprecated use agent_cycle_reverse. Previous mode\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        },
+        "switch_agent": {
+          "type": "string",
+          "default": "tab",
+          "description": "@deprecated use agent_cycle. Next agent\n\ndefault: `tab`",
+          "examples": [
+            "tab"
+          ]
+        },
+        "switch_agent_reverse": {
+          "type": "string",
+          "default": "shift+tab",
+          "description": "@deprecated use agent_cycle_reverse. Previous agent\n\ndefault: `shift+tab`",
+          "examples": [
+            "shift+tab"
+          ]
+        },
+        "file_list": {
+          "type": "string",
+          "default": "none",
+          "description": "@deprecated Currently not available. List files\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        },
+        "file_close": {
+          "type": "string",
+          "default": "none",
+          "description": "@deprecated Close file\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        },
+        "file_search": {
+          "type": "string",
+          "default": "none",
+          "description": "@deprecated Search file\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        },
+        "file_diff_toggle": {
+          "type": "string",
+          "default": "none",
+          "description": "@deprecated Split/unified diff\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        },
+        "messages_previous": {
+          "type": "string",
+          "default": "none",
+          "description": "@deprecated Navigate to previous message\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        },
+        "messages_next": {
+          "type": "string",
+          "default": "none",
+          "description": "@deprecated Navigate to next message\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        },
+        "messages_layout_toggle": {
+          "type": "string",
+          "default": "none",
+          "description": "@deprecated Toggle layout\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        },
+        "messages_revert": {
+          "type": "string",
+          "default": "none",
+          "description": "@deprecated use messages_undo. Revert message\n\ndefault: `none`",
+          "examples": [
+            "none"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "description": "Custom keybind configurations"
+    },
+    "tui": {
+      "type": "object",
+      "properties": {
+        "scroll_speed": {
+          "type": "number",
+          "minimum": 1,
+          "default": 2,
+          "description": "TUI scroll speed"
+        }
+      },
+      "additionalProperties": false,
+      "description": "TUI specific settings"
+    },
+    "plugin": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "snapshot": {
+      "type": "boolean"
+    },
+    "share": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "auto",
+        "disabled"
+      ],
+      "description": "Control sharing behavior:'manual' allows manual sharing via commands, 'auto' enables automatic sharing, 'disabled' disables all sharing"
+    },
+    "autoshare": {
+      "type": "boolean",
+      "description": "@deprecated Use 'share' field instead. Share newly created sessions automatically"
+    },
+    "autoupdate": {
+      "type": "boolean",
+      "description": "Automatically update to the latest version"
+    },
+    "disabled_providers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Disable providers that are loaded automatically"
+    },
+    "model": {
+      "type": "string",
+      "description": "Model to use in the format of provider/model, eg anthropic/claude-2"
+    },
+    "small_model": {
+      "type": "string",
+      "description": "Small model to use for tasks like title generation in the format of provider/model"
+    },
+    "username": {
+      "type": "string",
+      "description": "Custom username to display in conversations instead of system username"
+    },
+    "mode": {
+      "type": "object",
+      "properties": {
+        "build": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "temperature": {
+              "type": "number"
+            },
+            "top_p": {
+              "type": "number"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "tools": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "boolean"
+              }
+            },
+            "disable": {
+              "type": "boolean"
+            },
+            "description": {
+              "type": "string",
+              "description": "Description of when to use the agent"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "subagent",
+                "primary",
+                "all"
+              ]
+            },
+            "permission": {
+              "type": "object",
+              "properties": {
+                "edit": {
+                  "type": "string",
+                  "enum": [
+                    "ask",
+                    "allow",
+                    "deny"
+                  ]
+                },
+                "bash": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/properties/mode/properties/build/properties/permission/properties/edit"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/properties/mode/properties/build/properties/permission/properties/edit"
+                      }
+                    }
+                  ]
+                },
+                "webfetch": {
+                  "$ref": "#/properties/mode/properties/build/properties/permission/properties/edit"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": {}
+        },
+        "plan": {
+          "$ref": "#/properties/mode/properties/build"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/properties/mode/properties/build"
+      },
+      "description": "@deprecated Use `agent` field instead."
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "plan": {
+          "$ref": "#/properties/mode/properties/build"
+        },
+        "build": {
+          "$ref": "#/properties/mode/properties/build"
+        },
+        "general": {
+          "$ref": "#/properties/mode/properties/build"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/properties/mode/properties/build"
+      },
+      "description": "Agent configuration, see https://opencode.ai/docs/agent"
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "api": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "npm": {
+            "type": "string"
+          },
+          "models": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "release_date": {
+                  "type": "string"
+                },
+                "attachment": {
+                  "type": "boolean"
+                },
+                "reasoning": {
+                  "type": "boolean"
+                },
+                "temperature": {
+                  "type": "boolean"
+                },
+                "tool_call": {
+                  "type": "boolean"
+                },
+                "cost": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    },
+                    "cache_read": {
+                      "type": "number"
+                    },
+                    "cache_write": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                "limit": {
+                  "type": "object",
+                  "properties": {
+                    "context": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "context",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                "options": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "apiKey": {
+                "type": "string"
+              },
+              "baseURL": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Custom provider configurations and model overrides"
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "local",
+                "description": "Type of MCP server connection"
+              },
+              "command": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Command and arguments to run the MCP server"
+              },
+              "environment": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Environment variables to set when running the MCP server"
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "Enable or disable the MCP server on startup"
+              }
+            },
+            "required": [
+              "type",
+              "command"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "remote",
+                "description": "Type of MCP server connection"
+              },
+              "url": {
+                "type": "string",
+                "description": "URL of the remote MCP server"
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "Enable or disable the MCP server on startup"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Headers to send with the request"
+              }
+            },
+            "required": [
+              "type",
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "description": "MCP (Model Context Protocol) server configurations"
+    },
+    "formatter": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          },
+          "command": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "environment": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "lsp": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "disabled": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "disabled"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "extensions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "disabled": {
+                "type": "boolean"
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "initialization": {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "command"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "instructions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Additional instruction files or patterns to include"
+    },
+    "layout": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "stretch"
+      ],
+      "description": "@deprecated Always uses stretch layout."
+    },
+    "permission": {
+      "type": "object",
+      "properties": {
+        "edit": {
+          "$ref": "#/properties/mode/properties/build/properties/permission/properties/edit"
+        },
+        "bash": {
+          "anyOf": [
+            {
+              "$ref": "#/properties/mode/properties/build/properties/permission/properties/edit"
+            },
+            {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/properties/mode/properties/build/properties/permission/properties/edit"
+              }
+            }
+          ]
+        },
+        "webfetch": {
+          "$ref": "#/properties/mode/properties/build/properties/permission/properties/edit"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tools": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "experimental": {
+      "type": "object",
+      "properties": {
+        "hook": {
+          "type": "object",
+          "properties": {
+            "file_edited": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "environment": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "session_completed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "environment": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "command"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "heavy": {
+      "type": "object",
+      "properties": {
+        "planner_model": {
+          "type": "string"
+        },
+        "synthesizer_model": {
+          "type": "string"
+        },
+        "max_concurrent_agents": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 3
+        },
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "parallel",
+            "sequential",
+            "tree"
+          ],
+          "default": "parallel",
+          "examples": [
+            "parallel"
+          ],
+          "description": "default: `parallel`"
+        },
+        "agent_pool_models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sub_agent_output": {
+          "type": "string",
+          "enum": [
+            "report",
+            "full_text"
+          ],
+          "default": "report",
+          "description": "Defines the output from sub-agents: 'report' for a concise summary, 'full_text' for the complete generation including tool usage.\n\ndefault: `report`",
+          "examples": [
+            "report"
+          ]
+        },
+        "save_agent_work": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, saves individual agent reports as separate message parts for later review and analysis."
+        },
+        "tools": {
+          "type": "object",
+          "properties": {
+            "read_only": {
+              "type": "boolean"
+            },
+            "allowed_tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "denied_tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "retry": {
+          "type": "object",
+          "properties": {
+            "max_attempts": {
+              "type": "integer",
+              "default": 3
+            },
+            "backoff_ms": {
+              "type": "integer",
+              "default": 1000
+            },
+            "rotate_models": {
+              "type": "boolean",
+              "default": true
+            },
+            "fail_on_empty": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "description": "Heavy Multi-Agent Mode configuration"
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

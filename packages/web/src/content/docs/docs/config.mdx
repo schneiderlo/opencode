@@ -362,3 +362,52 @@ These are useful for:
 - Keeping sensitive data like API keys in separate files.
 - Including large instruction files without cluttering your config.
 - Sharing common configuration snippets across multiple config files.
+
+---
+
+### Heavy mode
+
+Configure the Planner → Executor → Synthesizer workflow via the `heavy` key.
+
+```jsonc title="opencode.jsonc"
+{
+  "$schema": "https://opencode.ai/config.json",
+  "heavy": {
+    // Planning and synthesis
+    "planner_model": "openai/gpt-4o-mini",
+    "synthesizer_model": "anthropic/claude-3-5-sonnet",
+
+    // Execution control
+    "max_concurrent_agents": 3,            // Positive integer concurrency limit
+    "strategy": "parallel",               // "parallel" | "sequential" | "tree"
+
+    // Optional agent pool (round-robin per task)
+    "agent_pool_models": [
+      "openai/gpt-4o-mini",
+      "anthropic/claude-3-haiku"
+    ],
+
+    // Tool access controls (optional)
+    "tools": {
+      "read_only": true,
+      "allowed_tools": ["webfetch", "read"],
+      "denied_tools": ["bash", "edit", "write", "patch"]
+    },
+
+    // Retry logic for sub-tasks (optional)
+    "retry": {
+      "max_attempts": 3,
+      "backoff_ms": 1000,
+      "rotate_models": true,
+      "fail_on_empty": true
+    }
+  }
+}
+```
+
+Notes:
+
+- If `planner_model`/`synthesizer_model` are not set, the session's model is used.
+- When `read_only` is true, potentially destructive tools are disabled for sub-agents.
+- `agent_pool_models` enables round-robin model selection per sub-task.
+- Concurrency is bounded by `max_concurrent_agents` and the number of sub-tasks.

@@ -378,6 +378,41 @@ export namespace Server {
         },
       )
       .post(
+        "/session/:id/heavy/respond-plan",
+        describeRoute({
+          description: "Respond to a heavy mode plan (approve/reject)",
+          operationId: "session.heavy.respondPlan",
+          responses: {
+            200: {
+              description: "Response recorded",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+          },
+        }),
+        zValidator(
+          "param",
+          z.object({
+            id: z.string().openapi({ description: "Session ID" }),
+          }),
+        ),
+        zValidator(
+          "json",
+          z.object({
+            approved: z.boolean(),
+          }),
+        ),
+        async (c) => {
+          const id = c.req.valid("param").id
+          const body = c.req.valid("json")
+          const ok = Session.respondPlan({ sessionID: id, approved: body.approved })
+          return c.json(ok)
+        },
+      )
+      .post(
         "/session/:id/init",
         describeRoute({
           description: "Analyze the app and create an AGENTS.md file",

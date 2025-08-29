@@ -217,6 +217,36 @@ func init() {
 			Type:               reflect.TypeOf(EventListResponseEventIdeInstalled{}),
 			DiscriminatorValue: "ide.installed",
 		},
+		apijson.UnionVariant{
+			TypeFilter:         gjson.JSON,
+			Type:               reflect.TypeOf(EventListResponseEventHeavyPlanGenerated{}),
+			DiscriminatorValue: "heavy.plan.generated",
+		},
+		apijson.UnionVariant{
+			TypeFilter:         gjson.JSON,
+			Type:               reflect.TypeOf(EventListResponseEventHeavyTaskStarted{}),
+			DiscriminatorValue: "heavy.task.started",
+		},
+		apijson.UnionVariant{
+			TypeFilter:         gjson.JSON,
+			Type:               reflect.TypeOf(EventListResponseEventHeavyTaskCompleted{}),
+			DiscriminatorValue: "heavy.task.completed",
+		},
+		apijson.UnionVariant{
+			TypeFilter:         gjson.JSON,
+			Type:               reflect.TypeOf(EventListResponseEventHeavyTaskFailed{}),
+			DiscriminatorValue: "heavy.task.failed",
+		},
+		apijson.UnionVariant{
+			TypeFilter:         gjson.JSON,
+			Type:               reflect.TypeOf(EventListResponseEventHeavySynthesisStarted{}),
+			DiscriminatorValue: "heavy.synthesis.started",
+		},
+		apijson.UnionVariant{
+			TypeFilter:         gjson.JSON,
+			Type:               reflect.TypeOf(EventListResponseEventHeavySynthesisCompleted{}),
+			DiscriminatorValue: "heavy.synthesis.completed",
+		},
 	)
 }
 
@@ -1365,31 +1395,397 @@ func (r EventListResponseEventIdeInstalledType) IsKnown() bool {
 	return false
 }
 
+type EventListResponseEventHeavyPlanGenerated struct {
+	Properties EventListResponseEventHeavyPlanGeneratedProperties `json:"properties,required"`
+	Type       EventListResponseEventHeavyPlanGeneratedType       `json:"type,required"`
+	JSON       eventListResponseEventHeavyPlanGeneratedJSON       `json:"-"`
+}
+
+type eventListResponseEventHeavyPlanGeneratedJSON struct {
+	Properties  apijson.Field
+	Type        apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavyPlanGenerated) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavyPlanGeneratedJSON) RawJSON() string          { return r.raw }
+func (r EventListResponseEventHeavyPlanGenerated) implementsEventListResponse() {}
+
+type EventListResponseEventHeavyPlanGeneratedProperties struct {
+	SessionID string                                                 `json:"sessionID,required"`
+	Plan      EventListResponseEventHeavyPlanGeneratedPropertiesPlan `json:"plan,required"`
+	JSON      eventListResponseEventHeavyPlanGeneratedPropertiesJSON `json:"-"`
+}
+
+type eventListResponseEventHeavyPlanGeneratedPropertiesJSON struct {
+	SessionID   apijson.Field
+	Plan        apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavyPlanGeneratedProperties) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavyPlanGeneratedPropertiesJSON) RawJSON() string { return r.raw }
+
+type EventListResponseEventHeavyPlanGeneratedPropertiesPlan struct {
+	OriginalQuery string                                                          `json:"original_query,required"`
+	SubTasks      []EventListResponseEventHeavyPlanGeneratedPropertiesPlanSubTask `json:"sub_tasks,required"`
+	JSON          eventListResponseEventHeavyPlanGeneratedPropertiesPlanJSON      `json:"-"`
+}
+
+type eventListResponseEventHeavyPlanGeneratedPropertiesPlanJSON struct {
+	OriginalQuery apijson.Field
+	SubTasks      apijson.Field
+	raw           string
+	ExtraFields   map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavyPlanGeneratedPropertiesPlan) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavyPlanGeneratedPropertiesPlanJSON) RawJSON() string { return r.raw }
+
+type EventListResponseEventHeavyPlanGeneratedPropertiesPlanSubTask struct {
+	ID          int64                                                             `json:"id,required"`
+	Question    string                                                            `json:"question,required"`
+	Deliverable string                                                            `json:"deliverable,required"`
+	JSON        eventListResponseEventHeavyPlanGeneratedPropertiesPlanSubTaskJSON `json:"-"`
+}
+
+type eventListResponseEventHeavyPlanGeneratedPropertiesPlanSubTaskJSON struct {
+	ID          apijson.Field
+	Question    apijson.Field
+	Deliverable apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavyPlanGeneratedPropertiesPlanSubTask) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavyPlanGeneratedPropertiesPlanSubTaskJSON) RawJSON() string {
+	return r.raw
+}
+
+type EventListResponseEventHeavyPlanGeneratedType string
+
+const (
+	EventListResponseEventHeavyPlanGeneratedTypeHeavyPlanGenerated EventListResponseEventHeavyPlanGeneratedType = "heavy.plan.generated"
+)
+
+func (r EventListResponseEventHeavyPlanGeneratedType) IsKnown() bool {
+	switch r {
+	case EventListResponseEventHeavyPlanGeneratedTypeHeavyPlanGenerated:
+		return true
+	}
+	return false
+}
+
+type EventListResponseEventHeavyTaskStarted struct {
+	Properties EventListResponseEventHeavyTaskStartedProperties `json:"properties,required"`
+	Type       EventListResponseEventHeavyTaskStartedType       `json:"type,required"`
+	JSON       eventListResponseEventHeavyTaskStartedJSON       `json:"-"`
+}
+
+type eventListResponseEventHeavyTaskStartedJSON struct {
+	Properties  apijson.Field
+	Type        apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavyTaskStarted) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavyTaskStartedJSON) RawJSON() string          { return r.raw }
+func (r EventListResponseEventHeavyTaskStarted) implementsEventListResponse() {}
+
+type EventListResponseEventHeavyTaskStartedProperties struct {
+	SessionID      string                                               `json:"sessionID,required"`
+	TaskID         int64                                                `json:"taskId,required"`
+	Question       string                                               `json:"question,required"`
+	Model          string                                               `json:"model,required"`
+	ChildSessionID string                                               `json:"childSessionID"`
+	JSON           eventListResponseEventHeavyTaskStartedPropertiesJSON `json:"-"`
+}
+
+type eventListResponseEventHeavyTaskStartedPropertiesJSON struct {
+	SessionID      apijson.Field
+	TaskID         apijson.Field
+	Question       apijson.Field
+	Model          apijson.Field
+	ChildSessionID apijson.Field
+	raw            string
+	ExtraFields    map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavyTaskStartedProperties) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavyTaskStartedPropertiesJSON) RawJSON() string { return r.raw }
+
+type EventListResponseEventHeavyTaskStartedType string
+
+const (
+	EventListResponseEventHeavyTaskStartedTypeHeavyTaskStarted EventListResponseEventHeavyTaskStartedType = "heavy.task.started"
+)
+
+func (r EventListResponseEventHeavyTaskStartedType) IsKnown() bool {
+	switch r {
+	case EventListResponseEventHeavyTaskStartedTypeHeavyTaskStarted:
+		return true
+	}
+	return false
+}
+
+type EventListResponseEventHeavyTaskCompleted struct {
+	Properties EventListResponseEventHeavyTaskCompletedProperties `json:"properties,required"`
+	Type       EventListResponseEventHeavyTaskCompletedType       `json:"type,required"`
+	JSON       eventListResponseEventHeavyTaskCompletedJSON       `json:"-"`
+}
+
+type eventListResponseEventHeavyTaskCompletedJSON struct {
+	Properties  apijson.Field
+	Type        apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavyTaskCompleted) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavyTaskCompletedJSON) RawJSON() string          { return r.raw }
+func (r EventListResponseEventHeavyTaskCompleted) implementsEventListResponse() {}
+
+type EventListResponseEventHeavyTaskCompletedProperties struct {
+	SessionID      string                                                 `json:"sessionID,required"`
+	TaskID         int64                                                  `json:"taskId,required"`
+	Report         string                                                 `json:"report,required"`
+	ChildSessionID string                                                 `json:"childSessionID"`
+	JSON           eventListResponseEventHeavyTaskCompletedPropertiesJSON `json:"-"`
+}
+
+type eventListResponseEventHeavyTaskCompletedPropertiesJSON struct {
+	SessionID      apijson.Field
+	TaskID         apijson.Field
+	Report         apijson.Field
+	ChildSessionID apijson.Field
+	raw            string
+	ExtraFields    map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavyTaskCompletedProperties) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavyTaskCompletedPropertiesJSON) RawJSON() string { return r.raw }
+
+type EventListResponseEventHeavyTaskCompletedType string
+
+const (
+	EventListResponseEventHeavyTaskCompletedTypeHeavyTaskCompleted EventListResponseEventHeavyTaskCompletedType = "heavy.task.completed"
+)
+
+func (r EventListResponseEventHeavyTaskCompletedType) IsKnown() bool {
+	switch r {
+	case EventListResponseEventHeavyTaskCompletedTypeHeavyTaskCompleted:
+		return true
+	}
+	return false
+}
+
+type EventListResponseEventHeavyTaskFailed struct {
+	Properties EventListResponseEventHeavyTaskFailedProperties `json:"properties,required"`
+	Type       EventListResponseEventHeavyTaskFailedType       `json:"type,required"`
+	JSON       eventListResponseEventHeavyTaskFailedJSON       `json:"-"`
+}
+
+type eventListResponseEventHeavyTaskFailedJSON struct {
+	Properties  apijson.Field
+	Type        apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavyTaskFailed) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavyTaskFailedJSON) RawJSON() string          { return r.raw }
+func (r EventListResponseEventHeavyTaskFailed) implementsEventListResponse() {}
+
+type EventListResponseEventHeavyTaskFailedProperties struct {
+	SessionID      string                                              `json:"sessionID,required"`
+	TaskID         int64                                               `json:"taskId,required"`
+	Error          string                                              `json:"error,required"`
+	ChildSessionID string                                              `json:"childSessionID"`
+	JSON           eventListResponseEventHeavyTaskFailedPropertiesJSON `json:"-"`
+}
+
+type eventListResponseEventHeavyTaskFailedPropertiesJSON struct {
+	SessionID      apijson.Field
+	TaskID         apijson.Field
+	Error          apijson.Field
+	ChildSessionID apijson.Field
+	raw            string
+	ExtraFields    map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavyTaskFailedProperties) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavyTaskFailedPropertiesJSON) RawJSON() string { return r.raw }
+
+type EventListResponseEventHeavyTaskFailedType string
+
+const (
+	EventListResponseEventHeavyTaskFailedTypeHeavyTaskFailed EventListResponseEventHeavyTaskFailedType = "heavy.task.failed"
+)
+
+func (r EventListResponseEventHeavyTaskFailedType) IsKnown() bool {
+	switch r {
+	case EventListResponseEventHeavyTaskFailedTypeHeavyTaskFailed:
+		return true
+	}
+	return false
+}
+
+type EventListResponseEventHeavySynthesisStarted struct {
+	Properties EventListResponseEventHeavySynthesisStartedProperties `json:"properties,required"`
+	Type       EventListResponseEventHeavySynthesisStartedType       `json:"type,required"`
+	JSON       eventListResponseEventHeavySynthesisStartedJSON       `json:"-"`
+}
+
+type eventListResponseEventHeavySynthesisStartedJSON struct {
+	Properties  apijson.Field
+	Type        apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavySynthesisStarted) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavySynthesisStartedJSON) RawJSON() string          { return r.raw }
+func (r EventListResponseEventHeavySynthesisStarted) implementsEventListResponse() {}
+
+type EventListResponseEventHeavySynthesisStartedProperties struct {
+	SessionID string                                                    `json:"sessionID,required"`
+	JSON      eventListResponseEventHeavySynthesisStartedPropertiesJSON `json:"-"`
+}
+
+type eventListResponseEventHeavySynthesisStartedPropertiesJSON struct {
+	SessionID   apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavySynthesisStartedProperties) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavySynthesisStartedPropertiesJSON) RawJSON() string { return r.raw }
+
+type EventListResponseEventHeavySynthesisStartedType string
+
+const (
+	EventListResponseEventHeavySynthesisStartedTypeHeavySynthesisStarted EventListResponseEventHeavySynthesisStartedType = "heavy.synthesis.started"
+)
+
+func (r EventListResponseEventHeavySynthesisStartedType) IsKnown() bool {
+	switch r {
+	case EventListResponseEventHeavySynthesisStartedTypeHeavySynthesisStarted:
+		return true
+	}
+	return false
+}
+
+type EventListResponseEventHeavySynthesisCompleted struct {
+	Properties EventListResponseEventHeavySynthesisCompletedProperties `json:"properties,required"`
+	Type       EventListResponseEventHeavySynthesisCompletedType       `json:"type,required"`
+	JSON       eventListResponseEventHeavySynthesisCompletedJSON       `json:"-"`
+}
+
+type eventListResponseEventHeavySynthesisCompletedJSON struct {
+	Properties  apijson.Field
+	Type        apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavySynthesisCompleted) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavySynthesisCompletedJSON) RawJSON() string          { return r.raw }
+func (r EventListResponseEventHeavySynthesisCompleted) implementsEventListResponse() {}
+
+type EventListResponseEventHeavySynthesisCompletedProperties struct {
+	SessionID string                                                      `json:"sessionID,required"`
+	JSON      eventListResponseEventHeavySynthesisCompletedPropertiesJSON `json:"-"`
+}
+
+type eventListResponseEventHeavySynthesisCompletedPropertiesJSON struct {
+	SessionID   apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavySynthesisCompletedProperties) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavySynthesisCompletedPropertiesJSON) RawJSON() string { return r.raw }
+
+type EventListResponseEventHeavySynthesisCompletedType string
+
+const (
+	EventListResponseEventHeavySynthesisCompletedTypeHeavySynthesisCompleted EventListResponseEventHeavySynthesisCompletedType = "heavy.synthesis.completed"
+)
+
+func (r EventListResponseEventHeavySynthesisCompletedType) IsKnown() bool {
+	switch r {
+	case EventListResponseEventHeavySynthesisCompletedTypeHeavySynthesisCompleted:
+		return true
+	}
+	return false
+}
+
 type EventListResponseType string
 
 const (
-	EventListResponseTypeInstallationUpdated  EventListResponseType = "installation.updated"
-	EventListResponseTypeLspClientDiagnostics EventListResponseType = "lsp.client.diagnostics"
-	EventListResponseTypeMessageUpdated       EventListResponseType = "message.updated"
-	EventListResponseTypeMessageRemoved       EventListResponseType = "message.removed"
-	EventListResponseTypeMessagePartUpdated   EventListResponseType = "message.part.updated"
-	EventListResponseTypeMessagePartRemoved   EventListResponseType = "message.part.removed"
-	EventListResponseTypeStorageWrite         EventListResponseType = "storage.write"
-	EventListResponseTypePermissionUpdated    EventListResponseType = "permission.updated"
-	EventListResponseTypePermissionReplied    EventListResponseType = "permission.replied"
-	EventListResponseTypeFileEdited           EventListResponseType = "file.edited"
-	EventListResponseTypeSessionUpdated       EventListResponseType = "session.updated"
-	EventListResponseTypeSessionDeleted       EventListResponseType = "session.deleted"
-	EventListResponseTypeSessionIdle          EventListResponseType = "session.idle"
-	EventListResponseTypeSessionError         EventListResponseType = "session.error"
-	EventListResponseTypeServerConnected      EventListResponseType = "server.connected"
-	EventListResponseTypeFileWatcherUpdated   EventListResponseType = "file.watcher.updated"
-	EventListResponseTypeIdeInstalled         EventListResponseType = "ide.installed"
+	EventListResponseTypeInstallationUpdated     EventListResponseType = "installation.updated"
+	EventListResponseTypeLspClientDiagnostics    EventListResponseType = "lsp.client.diagnostics"
+	EventListResponseTypeMessageUpdated          EventListResponseType = "message.updated"
+	EventListResponseTypeMessageRemoved          EventListResponseType = "message.removed"
+	EventListResponseTypeMessagePartUpdated      EventListResponseType = "message.part.updated"
+	EventListResponseTypeMessagePartRemoved      EventListResponseType = "message.part.removed"
+	EventListResponseTypeStorageWrite            EventListResponseType = "storage.write"
+	EventListResponseTypePermissionUpdated       EventListResponseType = "permission.updated"
+	EventListResponseTypePermissionReplied       EventListResponseType = "permission.replied"
+	EventListResponseTypeFileEdited              EventListResponseType = "file.edited"
+	EventListResponseTypeSessionUpdated          EventListResponseType = "session.updated"
+	EventListResponseTypeSessionDeleted          EventListResponseType = "session.deleted"
+	EventListResponseTypeSessionIdle             EventListResponseType = "session.idle"
+	EventListResponseTypeSessionError            EventListResponseType = "session.error"
+	EventListResponseTypeServerConnected         EventListResponseType = "server.connected"
+	EventListResponseTypeFileWatcherUpdated      EventListResponseType = "file.watcher.updated"
+	EventListResponseTypeIdeInstalled            EventListResponseType = "ide.installed"
+	EventListResponseTypeHeavyPlanGenerated      EventListResponseType = "heavy.plan.generated"
+	EventListResponseTypeHeavyTaskStarted        EventListResponseType = "heavy.task.started"
+	EventListResponseTypeHeavyTaskCompleted      EventListResponseType = "heavy.task.completed"
+	EventListResponseTypeHeavyTaskFailed         EventListResponseType = "heavy.task.failed"
+	EventListResponseTypeHeavySynthesisStarted   EventListResponseType = "heavy.synthesis.started"
+	EventListResponseTypeHeavySynthesisCompleted EventListResponseType = "heavy.synthesis.completed"
 )
 
 func (r EventListResponseType) IsKnown() bool {
 	switch r {
 	case EventListResponseTypeInstallationUpdated, EventListResponseTypeLspClientDiagnostics, EventListResponseTypeMessageUpdated, EventListResponseTypeMessageRemoved, EventListResponseTypeMessagePartUpdated, EventListResponseTypeMessagePartRemoved, EventListResponseTypeStorageWrite, EventListResponseTypePermissionUpdated, EventListResponseTypePermissionReplied, EventListResponseTypeFileEdited, EventListResponseTypeSessionUpdated, EventListResponseTypeSessionDeleted, EventListResponseTypeSessionIdle, EventListResponseTypeSessionError, EventListResponseTypeServerConnected, EventListResponseTypeFileWatcherUpdated, EventListResponseTypeIdeInstalled:
+		return true
+	}
+	switch r {
+	case EventListResponseTypeHeavyPlanGenerated, EventListResponseTypeHeavyTaskStarted, EventListResponseTypeHeavyTaskCompleted, EventListResponseTypeHeavyTaskFailed, EventListResponseTypeHeavySynthesisStarted, EventListResponseTypeHeavySynthesisCompleted:
 		return true
 	}
 	return false

@@ -90,6 +90,15 @@ export namespace Agent {
         mode: "primary",
         builtIn: true,
       },
+      heavy: {
+        name: "heavy",
+        description: "Planner → Executor → Synthesizer multi-agent workflow with plan approval and live dashboard.",
+        tools: {},
+        options: {},
+        permission: agentPermission,
+        mode: "primary",
+        builtIn: true,
+      },
     }
     for (const [key, value] of Object.entries(cfg.agent ?? {})) {
       if (value.disable) {

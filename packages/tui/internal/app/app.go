@@ -26,31 +26,58 @@ type Message struct {
 	Parts []opencode.PartUnion
 }
 
+type PlannerSubTask struct {
+	ID          int    `json:"id"`
+	Question    string `json:"question"`
+	Deliverable string `json:"deliverable"`
+}
+
+type PlannerOutput struct {
+	OriginalQuery string           `json:"original_query"`
+	SubTasks      []PlannerSubTask `json:"sub_tasks"`
+}
+
+type HeavyTaskStatus struct {
+	Status         string
+	Model          string
+	Question       string
+	Report         string
+	Error          string
+	ChildSessionID string
+	// Expanded bool // reserved for future inline expansion toggle
+}
+
 type App struct {
-	Info              opencode.App
-	Agents            []opencode.Agent
-	Providers         []opencode.Provider
-	Version           string
-	StatePath         string
-	Config            *opencode.Config
-	Client            *opencode.Client
-	State             *State
-	AgentIndex        int
-	Provider          *opencode.Provider
-	Model             *opencode.Model
-	Session           *opencode.Session
-	Messages          []Message
-	Permissions       []opencode.Permission
-	CurrentPermission opencode.Permission
-	Commands          commands.CommandRegistry
-	InitialModel      *string
-	InitialPrompt     *string
-	InitialAgent      *string
-	InitialSession    *string
-	compactCancel     context.CancelFunc
-	IsLeaderSequence  bool
-	IsBashMode        bool
-	ScrollSpeed       int
+	Info                     opencode.App
+	Agents                   []opencode.Agent
+	Providers                []opencode.Provider
+	Version                  string
+	StatePath                string
+	Config                   *opencode.Config
+	Client                   *opencode.Client
+	State                    *State
+	AgentIndex               int
+	Provider                 *opencode.Provider
+	Model                    *opencode.Model
+	Session                  *opencode.Session
+	Messages                 []Message
+	Permissions              []opencode.Permission
+	CurrentPermission        opencode.Permission
+	Commands                 commands.CommandRegistry
+	InitialModel             *string
+	InitialPrompt            *string
+	InitialAgent             *string
+	InitialSession           *string
+	compactCancel            context.CancelFunc
+	IsLeaderSequence         bool
+	IsBashMode               bool
+	ScrollSpeed              int
+	HeavyTaskParentSessionID string
+	PendingPlan              *PlannerOutput
+	HeavyTasks               map[int]HeavyTaskStatus
+	HeavySynthesis           string // "running", "completed", or ""
+	HeavyApprovalMessage     string
+	PlanRejected             bool
 }
 
 func (a *App) Agent() *opencode.Agent {
@@ -209,6 +236,7 @@ func New(
 		InitialAgent:   initialAgent,
 		InitialSession: initialSession,
 		ScrollSpeed:    int(configInfo.Tui.ScrollSpeed),
+		HeavyTasks:     map[int]HeavyTaskStatus{},
 	}
 
 	return app, nil
@@ -678,6 +706,18 @@ func (a *App) HasAnimatingWork() bool {
 			}
 		}
 	}
+
+	if a.HeavyTaskParentSessionID != "" {
+		for _, task := range a.HeavyTasks {
+			if task.Status == "pending" || task.Status == "running" {
+				return true
+			}
+		}
+		if a.HeavySynthesis == "running" {
+			return true
+		}
+	}
+
 	return false
 }
 
@@ -893,6 +933,21 @@ func (a *App) ListSessions(ctx context.Context) ([]opencode.Session, error) {
 	}
 	sessions := *response
 	return sessions, nil
+}
+
+func (a *App) GetSession(ctx context.Context, sessionID string) (*opencode.Session, error) {
+	sessions, err := a.ListSessions(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, session := range sessions {
+		if session.ID == sessionID {
+			return &session, nil
+		}
+	}
+
+	return nil, fmt.Errorf("session not found: %s", sessionID)
 }
 
 func (a *App) DeleteSession(ctx context.Context, sessionID string) error {

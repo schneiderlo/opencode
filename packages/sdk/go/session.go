@@ -26,6 +26,7 @@ import (
 type SessionService struct {
 	Options     []option.RequestOption
 	Permissions *SessionPermissionService
+	Heavy       *SessionHeavyService
 }
 
 // NewSessionService generates a new service that applies the given options to each
@@ -35,6 +36,7 @@ func NewSessionService(opts ...option.RequestOption) (r *SessionService) {
 	r = &SessionService{}
 	r.Options = opts
 	r.Permissions = NewSessionPermissionService(opts...)
+	r.Heavy = NewSessionHeavyService(opts...)
 	return
 }
 

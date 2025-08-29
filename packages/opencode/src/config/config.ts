@@ -328,6 +328,45 @@ export namespace Config {
     scroll_speed: z.number().min(1).optional().default(2).describe("TUI scroll speed"),
   })
 
+  export const Heavy = z
+    .object({
+      planner_model: z.string().optional(),
+      synthesizer_model: z.string().optional(),
+      max_concurrent_agents: z.number().int().positive().optional().default(3),
+      strategy: z.enum(["parallel", "sequential", "tree"]).optional().default("parallel"),
+      agent_pool_models: z.array(z.string()).optional(),
+      sub_agent_output: z
+        .enum(["report", "full_text"])
+        .optional()
+        .default("report")
+        .describe("Defines the output from sub-agents: 'report' for a concise summary, 'full_text' for the complete generation including tool usage."),
+      save_agent_work: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("When enabled, saves individual agent reports as separate message parts for later review and analysis."),
+      tools: z
+        .object({
+          read_only: z.boolean().optional(),
+          allowed_tools: z.array(z.string()).optional(),
+          denied_tools: z.array(z.string()).optional(),
+        })
+        .optional(),
+      retry: z
+        .object({
+          max_attempts: z.number().int().optional().default(3),
+          backoff_ms: z.number().int().optional().default(1000),
+          rotate_models: z.boolean().optional().default(true),
+          fail_on_empty: z.boolean().optional().default(true),
+        })
+        .optional(),
+    })
+    .strict()
+    .openapi({
+      ref: "HeavyConfig",
+    })
+  export type Heavy = z.infer<typeof Heavy>
+
   export const Layout = z.enum(["auto", "stretch"]).openapi({
     ref: "LayoutConfig",
   })
@@ -465,6 +504,7 @@ export namespace Config {
             .optional(),
         })
         .optional(),
+      heavy: Heavy.optional().describe("Heavy Multi-Agent Mode configuration"),
     })
     .strict()
     .openapi({

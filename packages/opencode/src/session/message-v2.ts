@@ -189,17 +189,21 @@ export namespace MessageV2 {
   export const AgentPart = PartBase.extend({
     type: z.literal("agent"),
     name: z.string(),
-    source: z
-      .object({
-        value: z.string(),
-        start: z.number().int(),
-        end: z.number().int(),
-      })
-      .optional(),
+    input: z.any(),
+    output: z.any(),
+    metadata: z.record(z.any()).optional(),
   }).openapi({
     ref: "AgentPart",
   })
   export type AgentPart = z.infer<typeof AgentPart>
+
+  export const HeavyPlanPart = PartBase.extend({
+    type: z.literal("heavy_plan"),
+    plan: z.any(),
+  }).openapi({
+    ref: "HeavyPlanPart",
+  })
+  export type HeavyPlanPart = z.infer<typeof HeavyPlanPart>
 
   export const StepStartPart = PartBase.extend({
     type: z.literal("step-start"),
@@ -251,6 +255,7 @@ export namespace MessageV2 {
       SnapshotPart,
       PatchPart,
       AgentPart,
+      HeavyPlanPart,
     ])
     .openapi({
       ref: "Part",
