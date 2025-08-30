@@ -222,8 +222,10 @@ class Heavy extends _HeyApiClient {
   /**
    * Run the heavy workflow for a session
    */
-  public run<ThrowOnError extends boolean = false>(options: Options<SessionChatData, ThrowOnError>) {
-    return new Session(this._client).chat({
+  public run<ThrowOnError extends boolean = false>(
+    options: Options<Omit<SessionChatData, "body"> & { body: Omit<SessionChatData["body"], "mode"> }, ThrowOnError>,
+  ) {
+    return new Session({ client: this._client }).chat({
       ...options,
       body: {
         ...options.body,
