@@ -141,6 +141,13 @@ Methods:
 - <code title="post /session/{id}/unrevert">client.Session.<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go#SessionService.Unrevert">Unrevert</a>(ctx <a href="https://pkg.go.dev/context">context</a>.<a href="https://pkg.go.dev/context#Context">Context</a>, id <a href="https://pkg.go.dev/builtin#string">string</a>) (<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go">opencode</a>.<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go#Session">Session</a>, <a href="https://pkg.go.dev/builtin#error">error</a>)</code>
 - <code title="delete /session/{id}/share">client.Session.<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go#SessionService.Unshare">Unshare</a>(ctx <a href="https://pkg.go.dev/context">context</a>.<a href="https://pkg.go.dev/context#Context">Context</a>, id <a href="https://pkg.go.dev/builtin#string">string</a>) (<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go">opencode</a>.<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go#Session">Session</a>, <a href="https://pkg.go.dev/builtin#error">error</a>)</code>
 
+## Heavy
+
+Methods:
+
+- <code title="post /session/{id}/heavy/run">client.Session.Heavy.<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go#SessionHeavyService.RunHeavyWorkflow">RunHeavyWorkflow</a>(ctx <a href="https://pkg.go.dev/context">context</a>.<a href="https://pkg.go.dev/context#Context">Context</a>, id <a href="https://pkg.go.dev/builtin#string">string</a>, body <a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go">opencode</a>.<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go#RunHeavyWorkflowParams">RunHeavyWorkflowParams</a>) (<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go">opencode</a>.<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go#SessionChatResponse">SessionChatResponse</a>, <a href="https://pkg.go.dev/builtin#error">error</a>)</code>
+- <code title="post /session/{id}/heavy/respond-plan">client.Session.Heavy.<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go#SessionHeavyService.RespondPlan">RespondPlan</a>(ctx <a href="https://pkg.go.dev/context">context</a>.<a href="https://pkg.go.dev/context#Context">Context</a>, id <a href="https://pkg.go.dev/builtin#string">string</a>, body <a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go">opencode</a>.<a href="https://pkg.go.dev/github.com/sst/opencode-sdk-go#SessionHeavyRespondPlanParams">SessionHeavyRespondPlanParams</a>) (<a href="https://pkg.go.dev/builtin#bool">bool</a>, <a href="https://pkg.go.dev/builtin#error">error</a>)</code>
+
 ## Permissions
 
 Response Types:

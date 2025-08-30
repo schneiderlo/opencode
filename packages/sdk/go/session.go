@@ -2409,6 +2409,7 @@ type SessionChatParams struct {
 	MessageID  param.Field[string]                       `json:"messageID"`
 	System     param.Field[string]                       `json:"system"`
 	Tools      param.Field[map[string]bool]              `json:"tools"`
+	Mode       param.Field[string]                       `json:"mode"`
 }
 
 func (r SessionChatParams) MarshalJSON() (data []byte, err error) {
