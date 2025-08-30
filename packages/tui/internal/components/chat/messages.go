@@ -862,6 +862,12 @@ func (m *messagesComponent) renderView() tea.Cmd {
 			lineCount += lipgloss.Height(dashboardContent) + 1
 		}
 
+		if m.app.HeavyUsage != nil {
+			usageContent := m.renderUsage(width)
+			blocks = append(blocks, usageContent)
+			lineCount += lipgloss.Height(usageContent) + 1
+		}
+
 		final := []string{}
 		clipboard := []string{}
 		var selection *selection
@@ -1252,6 +1258,39 @@ func (m *messagesComponent) renderSubAgentDashboard(width int) string {
 		content,
 		width,
 		WithBorderColor(t.Accent()),
+	)
+}
+
+func (m *messagesComponent) renderUsage(width int) string {
+	t := theme.CurrentTheme()
+	usage := m.app.HeavyUsage
+	if usage == nil {
+		return ""
+	}
+
+	lines := []string{"HEAVY MODE USAGE:", ""}
+
+	formatUsage := func(name string, u app.Usage) string {
+		cost := fmt.Sprintf("$%.6f", u.Cost)
+		return fmt.Sprintf("%-12s Cost: %-15s Tokens: %d (p: %d, c: %d)", name, cost, u.TotalTokens, u.PromptTokens, u.CompletionTokens)
+	}
+
+	lines = append(lines, formatUsage("Planner", usage.Planner))
+	lines = append(lines, formatUsage("Executor", usage.Executor))
+	lines = append(lines, formatUsage("Synthesizer", usage.Synthesizer))
+
+	totalCost := usage.Planner.Cost + usage.Executor.Cost + usage.Synthesizer.Cost
+	totalTokens := usage.Planner.TotalTokens + usage.Executor.TotalTokens + usage.Synthesizer.TotalTokens
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("TOTALS: Cost: $%.6f, Tokens: %d", totalCost, totalTokens))
+
+	content := strings.Join(lines, "\n")
+	content = styles.NewStyle().Width(width - 6).Render(content)
+	return renderContentBlock(
+		m.app,
+		content,
+		width,
+		WithBorderColor(t.Primary()),
 	)
 }
 

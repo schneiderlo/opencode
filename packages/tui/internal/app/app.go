@@ -47,6 +47,19 @@ type HeavyTaskStatus struct {
 	// Expanded bool // reserved for future inline expansion toggle
 }
 
+type HeavyUsage struct {
+	Planner     Usage
+	Executor    Usage
+	Synthesizer Usage
+}
+
+type Usage struct {
+	PromptTokens     int64
+	CompletionTokens int64
+	TotalTokens      int64
+	Cost             float64
+}
+
 type App struct {
 	Info                     opencode.App
 	Agents                   []opencode.Agent
@@ -76,6 +89,7 @@ type App struct {
 	PendingPlan              *PlannerOutput
 	HeavyTasks               map[int]HeavyTaskStatus
 	HeavySynthesis           string // "running", "completed", or ""
+	HeavyUsage               *HeavyUsage
 	HeavyApprovalMessage     string
 	PlanRejected             bool
 }

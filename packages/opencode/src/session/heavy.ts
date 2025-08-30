@@ -21,7 +21,10 @@ import { ToolRegistry } from "../tool/registry"
 import { SystemPrompt } from "./system"
 import { Log } from "../util/log"
 import { Storage } from "../storage/storage"
-import { Session } from "./index"
+import { Session, getUsage } from "./index"
+import { type LanguageModelUsage, type ProviderMetadata } from "ai"
+import { type ModelsDev } from "../provider/models"
+import { Decimal } from "decimal.js"
 
 const log = Log.create({ service: "session" })
 
@@ -77,6 +80,20 @@ export type ExecutorTaskResult = {
   status: "completed" | "failed"
   report?: string
   error?: string
+  usage: Usage
+}
+
+export type Usage = {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  cost?: number
+}
+
+export type PhaseUsage = {
+  planner: Usage
+  executor: Usage
+  synthesizer: Usage
 }
 
 // --- Events ---
@@ -98,7 +115,32 @@ export const Heavy = {
     z.object({ sessionID: z.string(), taskId: z.number(), error: z.string(), childSessionID: z.string() }),
   ),
   SynthesisStarted: Bus.event("heavy.synthesis.started", z.object({ sessionID: z.string() })),
-  SynthesisCompleted: Bus.event("heavy.synthesis.completed", z.object({ sessionID: z.string() })),
+  SynthesisCompleted: Bus.event(
+    "heavy.synthesis.completed",
+    z.object({
+      sessionID: z.string(),
+      usage: z.object({
+        planner: z.object({
+          promptTokens: z.number(),
+          completionTokens: z.number(),
+          totalTokens: z.number(),
+          cost: z.number().optional(),
+        }),
+        executor: z.object({
+          promptTokens: z.number(),
+          completionTokens: z.number(),
+          totalTokens: z.number(),
+          cost: z.number().optional(),
+        }),
+        synthesizer: z.object({
+          promptTokens: z.number(),
+          completionTokens: z.number(),
+          totalTokens: z.number(),
+          cost: z.number().optional(),
+        }),
+      }),
+    }),
+  ),
 }
 
 // --- State and Input Types ---
@@ -117,7 +159,9 @@ export type RunHeavyWorkflowArgs = {
 }
 
 // --- Internal Helper Functions ---
-async function _runPlannerAgent(input: Session.ChatInput): Promise<PlannerOutput> {
+async function _runPlannerAgent(
+  input: Session.ChatInput,
+): Promise<{ plan: PlannerOutput; usage: Usage; providerID: string; modelID: string }> {
   const cfg = await Config.get()
   const heavy = cfg.heavy
 
@@ -172,6 +216,7 @@ async function _runPlannerAgent(input: Session.ChatInput): Promise<PlannerOutput
 
     // Some providers may return stringified JSON despite schema; handle it
     const object: unknown = (res as any).object
+    const usage = res.totalUsage
     if (typeof object === "string") {
       // Some providers return a raw JSON string even when using generateObject; log raw content
       try {
@@ -179,9 +224,9 @@ async function _runPlannerAgent(input: Session.ChatInput): Promise<PlannerOutput
       } catch {}
       const parsed = JSON.parse(object)
       const validated = PlannerOutputSchema.parse(parsed)
-      return validated
+      return { plan: validated, usage, providerID, modelID }
     }
-    return object as PlannerOutput
+    return { plan: object as PlannerOutput, usage, providerID, modelID }
   } catch (e) {
     log.warn("planner.generateObject.failed", { error: (e as Error)?.message })
   }
@@ -245,7 +290,7 @@ async function _runPlannerAgent(input: Session.ChatInput): Promise<PlannerOutput
   const parsed = extractJSONObject(raw)
   const validated = PlannerOutputSchema.safeParse(parsed)
   if (validated.success) {
-    return validated.data
+    return { plan: validated.data, usage: textResult.totalUsage, providerID, modelID }
   }
 
   throw new Error("Planner could not generate a valid plan")
@@ -416,7 +461,7 @@ async function _runExecutorAgents(
       if (Array.isArray(heavyTools?.denied_tools)) {
         for (const id of heavyTools!.denied_tools!) toolOverrides[id] = false
       }
-              const result = await Session.chat({
+      const result = await Session.chat({
         sessionID: child.id,
         providerID: pick.providerID,
         modelID: pick.modelID,
@@ -440,6 +485,11 @@ async function _runExecutorAgents(
       })()
       await Bus.publish(Heavy.TaskCompleted, { sessionID, taskId: task.id, report: reportText, childSessionID: child.id })
       log.info("executor.task.done", { childID: child.id, taskId: task.id })
+      const usage: Usage = {
+        promptTokens: result.info.tokens.input,
+        completionTokens: result.info.tokens.output,
+        totalTokens: result.info.tokens.input + result.info.tokens.output,
+      }
       return {
         taskId: task.id,
         childSessionID: child.id,
@@ -447,6 +497,7 @@ async function _runExecutorAgents(
         modelID: pick.modelID,
         status: "completed" as const,
         report: reportText,
+        usage,
       }
     } catch (e) {
       const msg = (e as Error)?.message ?? "unknown"
@@ -459,6 +510,11 @@ async function _runExecutorAgents(
         modelID: pick.modelID,
         status: "failed",
         error: msg,
+        usage: {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+        },
       }
       return failed
     }
@@ -478,7 +534,7 @@ async function _runSynthesizerAgent(args: {
   reports: string[]
   abortSignal: AbortSignal
   processor: any
-}) {
+}): Promise<{ usage: Usage; providerID: string; modelID: string }> {
   const { plan, assistantMsg, sessionID, inputProviderID, inputModelID, reports, abortSignal, processor } = args
   await Bus.publish(Heavy.SynthesisStarted, { sessionID })
 
@@ -524,10 +580,14 @@ async function _runSynthesizerAgent(args: {
     ],
   })
 
-  await processor.process(stream)
+  const result = await processor.process(stream)
 
-  // Emit synthesis completed event
-  await Bus.publish(Heavy.SynthesisCompleted, { sessionID })
+  const usage: Usage = {
+    promptTokens: result.info.tokens.input,
+    completionTokens: result.info.tokens.output,
+    totalTokens: result.info.tokens.input + result.info.tokens.output,
+  }
+  return { usage, providerID, modelID }
 }
 
 // --- The Main Exported Workflow Function ---
@@ -537,7 +597,12 @@ export async function runHeavyWorkflow(
   const { input, assistantMsg, abortSignal, state } = args
 
   try {
-    const plan = await _runPlannerAgent(input)
+    const {
+      plan,
+      usage: plannerUsage,
+      providerID: plannerProviderID,
+      modelID: plannerModelID,
+    } = await _runPlannerAgent(input)
     // reflect planner model if configured
     const cfg = await Config.get()
     const plannerModelStr = cfg.heavy?.planner_model
@@ -575,7 +640,11 @@ export async function runHeavyWorkflow(
         .map((r) => r.report ?? "")
         .filter((x) => x && x.trim().length > 0)
 
-      await _runSynthesizerAgent({
+      const {
+        usage: synthesizerUsage,
+        providerID: synthesizerProviderID,
+        modelID: synthesizerModelID,
+      } = await _runSynthesizerAgent({
         plan,
         assistantMsg,
         sessionID: input.sessionID,
@@ -584,6 +653,42 @@ export async function runHeavyWorkflow(
         reports,
         abortSignal,
         processor: args.processor,
+      })
+
+      const executorUsage: Usage = {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        cost: 0,
+      }
+      for (const result of execResults) {
+        if (result.status === "completed") {
+          const model = await Provider.getModel(result.providerID, result.modelID)
+          const cost = getUsage(model.info, result.usage).cost
+          executorUsage.promptTokens += result.usage.promptTokens
+          executorUsage.completionTokens += result.usage.completionTokens
+          executorUsage.totalTokens += result.usage.totalTokens
+          executorUsage.cost = (executorUsage.cost ?? 0) + cost
+        }
+      }
+
+      const plannerModel = await Provider.getModel(plannerProviderID, plannerModelID)
+      const synthesizerModel = await Provider.getModel(synthesizerProviderID, synthesizerModelID)
+
+      const phaseUsage: PhaseUsage = {
+        planner: {
+          ...plannerUsage,
+          cost: getUsage(plannerModel.info, plannerUsage).cost,
+        },
+        executor: executorUsage,
+        synthesizer: {
+          ...synthesizerUsage,
+          cost: getUsage(synthesizerModel.info, synthesizerUsage).cost,
+        },
+      }
+      await Bus.publish(Heavy.SynthesisCompleted, {
+        sessionID: input.sessionID,
+        usage: phaseUsage,
       })
     } else {
       const part: MessageV2.Part = {

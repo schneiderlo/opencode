@@ -1731,10 +1731,10 @@ export namespace Session {
     }
   }
 
-  function getUsage(model: ModelsDev.Model, usage: LanguageModelUsage, metadata?: ProviderMetadata) {
+  export function getUsage(model: ModelsDev.Model, usage: LanguageModelUsage, metadata?: ProviderMetadata) {
     const tokens = {
-      input: usage.inputTokens ?? 0,
-      output: usage.outputTokens ?? 0,
+      input: usage.promptTokens ?? 0,
+      output: usage.completionTokens ?? 0,
       reasoning: usage?.reasoningTokens ?? 0,
       cache: {
         write: (metadata?.["anthropic"]?.["cacheCreationInputTokens"] ??

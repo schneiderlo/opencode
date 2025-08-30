@@ -1723,11 +1723,13 @@ func (r EventListResponseEventHeavySynthesisCompleted) implementsEventListRespon
 
 type EventListResponseEventHeavySynthesisCompletedProperties struct {
 	SessionID string                                                      `json:"sessionID,required"`
+	Usage     EventListResponseEventHeavySynthesisCompletedPropertiesUsage `json:"usage,required"`
 	JSON      eventListResponseEventHeavySynthesisCompletedPropertiesJSON `json:"-"`
 }
 
 type eventListResponseEventHeavySynthesisCompletedPropertiesJSON struct {
 	SessionID   apijson.Field
+	Usage       apijson.Field
 	raw         string
 	ExtraFields map[string]apijson.Field
 }
@@ -1736,6 +1738,100 @@ func (r *EventListResponseEventHeavySynthesisCompletedProperties) UnmarshalJSON(
 	return apijson.UnmarshalRoot(data, r)
 }
 func (r eventListResponseEventHeavySynthesisCompletedPropertiesJSON) RawJSON() string { return r.raw }
+
+type EventListResponseEventHeavySynthesisCompletedPropertiesUsage struct {
+	Planner     EventListResponseEventHeavySynthesisCompletedPropertiesUsagePlanner     `json:"planner,required"`
+	Executor    EventListResponseEventHeavySynthesisCompletedPropertiesUsageExecutor    `json:"executor,required"`
+	Synthesizer EventListResponseEventHeavySynthesisCompletedPropertiesUsageSynthesizer `json:"synthesizer,required"`
+	JSON        eventListResponseEventHeavySynthesisCompletedPropertiesUsageJSON        `json:"-"`
+}
+
+type eventListResponseEventHeavySynthesisCompletedPropertiesUsageJSON struct {
+	Planner     apijson.Field
+	Executor    apijson.Field
+	Synthesizer apijson.Field
+	raw         string
+	ExtraFields map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavySynthesisCompletedPropertiesUsage) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavySynthesisCompletedPropertiesUsageJSON) RawJSON() string {
+	return r.raw
+}
+
+type EventListResponseEventHeavySynthesisCompletedPropertiesUsagePlanner struct {
+	PromptTokens     int64   `json:"promptTokens,required"`
+	CompletionTokens int64   `json:"completionTokens,required"`
+	TotalTokens      int64   `json:"totalTokens,required"`
+	Cost             float64 `json:"cost"`
+	JSON             eventListResponseEventHeavySynthesisCompletedPropertiesUsagePlannerJSON `json:"-"`
+}
+
+type eventListResponseEventHeavySynthesisCompletedPropertiesUsagePlannerJSON struct {
+	PromptTokens     apijson.Field
+	CompletionTokens apijson.Field
+	TotalTokens      apijson.Field
+	Cost             apijson.Field
+	raw              string
+	ExtraFields      map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavySynthesisCompletedPropertiesUsagePlanner) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavySynthesisCompletedPropertiesUsagePlannerJSON) RawJSON() string {
+	return r.raw
+}
+
+type EventListResponseEventHeavySynthesisCompletedPropertiesUsageExecutor struct {
+	PromptTokens     int64   `json:"promptTokens,required"`
+	CompletionTokens int64   `json:"completionTokens,required"`
+	TotalTokens      int64   `json:"totalTokens,required"`
+	Cost             float64 `json:"cost"`
+	JSON             eventListResponseEventHeavySynthesisCompletedPropertiesUsageExecutorJSON `json:"-"`
+}
+
+type eventListResponseEventHeavySynthesisCompletedPropertiesUsageExecutorJSON struct {
+	PromptTokens     apijson.Field
+	CompletionTokens apijson.Field
+	TotalTokens      apijson.Field
+	Cost             apijson.Field
+	raw              string
+	ExtraFields      map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavySynthesisCompletedPropertiesUsageExecutor) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavySynthesisCompletedPropertiesUsageExecutorJSON) RawJSON() string {
+	return r.raw
+}
+
+type EventListResponseEventHeavySynthesisCompletedPropertiesUsageSynthesizer struct {
+	PromptTokens     int64   `json:"promptTokens,required"`
+	CompletionTokens int64   `json:"completionTokens,required"`
+	TotalTokens      int64   `json:"totalTokens,required"`
+	Cost             float64 `json:"cost"`
+	JSON             eventListResponseEventHeavySynthesisCompletedPropertiesUsageSynthesizerJSON `json:"-"`
+}
+
+type eventListResponseEventHeavySynthesisCompletedPropertiesUsageSynthesizerJSON struct {
+	PromptTokens     apijson.Field
+	CompletionTokens apijson.Field
+	TotalTokens      apijson.Field
+	Cost             apijson.Field
+	raw              string
+	ExtraFields      map[string]apijson.Field
+}
+
+func (r *EventListResponseEventHeavySynthesisCompletedPropertiesUsageSynthesizer) UnmarshalJSON(data []byte) (err error) {
+	return apijson.UnmarshalRoot(data, r)
+}
+func (r eventListResponseEventHeavySynthesisCompletedPropertiesUsageSynthesizerJSON) RawJSON() string {
+	return r.raw
+}
 
 type EventListResponseEventHeavySynthesisCompletedType string
 

@@ -709,6 +709,26 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case opencode.EventListResponseEventHeavySynthesisCompleted:
 		if a.app.HeavyTaskParentSessionID != "" && msg.Properties.SessionID == a.app.HeavyTaskParentSessionID {
 			a.app.HeavySynthesis = "completed"
+			a.app.HeavyUsage = &app.HeavyUsage{
+				Planner: app.Usage{
+					PromptTokens:     msg.Properties.Usage.Planner.PromptTokens,
+					CompletionTokens: msg.Properties.Usage.Planner.CompletionTokens,
+					TotalTokens:      msg.Properties.Usage.Planner.TotalTokens,
+					Cost:             msg.Properties.Usage.Planner.Cost,
+				},
+				Executor: app.Usage{
+					PromptTokens:     msg.Properties.Usage.Executor.PromptTokens,
+					CompletionTokens: msg.Properties.Usage.Executor.CompletionTokens,
+					TotalTokens:      msg.Properties.Usage.Executor.TotalTokens,
+					Cost:             msg.Properties.Usage.Executor.Cost,
+				},
+				Synthesizer: app.Usage{
+					PromptTokens:     msg.Properties.Usage.Synthesizer.PromptTokens,
+					CompletionTokens: msg.Properties.Usage.Synthesizer.CompletionTokens,
+					TotalTokens:      msg.Properties.Usage.Synthesizer.TotalTokens,
+					Cost:             msg.Properties.Usage.Synthesizer.Cost,
+				},
+			}
 		}
 		// continue to bottom so messages component can re-render
 	case opencode.EventListResponseEventSessionDeleted:
