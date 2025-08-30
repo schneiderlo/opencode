@@ -673,36 +673,6 @@ export namespace Server {
         },
       )
       .post(
-        "/session/:id/heavy/run",
-        describeRoute({
-          description: "Run the heavy workflow for a session",
-          operationId: "session.heavy.run",
-          responses: {
-            200: {
-              description: "Workflow started",
-              content: {
-                "application/json": {
-                  schema: resolver(z.boolean()),
-                },
-              },
-            },
-          },
-        }),
-        zValidator(
-          "param",
-          z.object({
-            id: z.string().openapi({ description: "Session ID" }),
-          }),
-        ),
-        zValidator("json", Session.ChatInput.omit({ sessionID: true })),
-        async (c) => {
-          const sessionID = c.req.valid("param").id
-          const body = c.req.valid("json")
-          Session.chat({ ...body, sessionID, mode: "heavy" })
-          return c.json(true)
-        },
-      )
-      .post(
         "/session/:id/command",
         describeRoute({
           description: "Send a new command to a session",
