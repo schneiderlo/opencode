@@ -676,6 +676,7 @@ export async function runHeavyWorkflow(
           cwd: "",
           root: "",
         },
+        level: "warning",
       }
       await updateMessage(summaryMsg)
       const subAgentCost = execResults.reduce((acc, r) => acc + r.cost, 0)
@@ -692,27 +693,18 @@ export async function runHeavyWorkflow(
       const totalOutputTokens = assistantMsg.tokens.output + subAgentTokens.output
       const totalTokens = totalInputTokens + totalOutputTokens
       const summaryText = `
-## Heavy Mode Synthesis Complete
-
-**Total Cost:** $${totalCost.toFixed(4)}
-**Total Tokens:** ${totalTokens} (Input: ${totalInputTokens}, Output: ${totalOutputTokens})
-
-### Breakdown:
-*   **Planner:**
-    *   Cost: $${plannerResult.cost.toFixed(4)}
-    *   Tokens: ${plannerResult.tokens.input + plannerResult.tokens.output} (Input: ${
-        plannerResult.tokens.input
-      }, Output: ${plannerResult.tokens.output})
-*   **Sub-agents (Accumulated):**
-    *   Cost: $${subAgentCost.toFixed(4)}
-    *   Tokens: ${subAgentTokens.input + subAgentTokens.output} (Input: ${subAgentTokens.input}, Output: ${
-        subAgentTokens.output
-      })
-*   **Synthesizer:**
-    *   Cost: $${assistantMsg.cost.toFixed(4)}
-    *   Tokens: ${assistantMsg.tokens.input + assistantMsg.tokens.output} (Input: ${
-        assistantMsg.tokens.input
-      }, Output: ${assistantMsg.tokens.output})
+| Stage | Cost | Tokens (Input/Output) |
+| :--- | :--- | :--- |
+| Planner | $${plannerResult.cost.toFixed(4)} | ${
+        plannerResult.tokens.input + plannerResult.tokens.output
+      } (${plannerResult.tokens.input}/${plannerResult.tokens.output}) |
+| Sub-agents | $${subAgentCost.toFixed(4)} | ${subAgentTokens.input + subAgentTokens.output} (${
+        subAgentTokens.input
+      }/${subAgentTokens.output}) |
+| Synthesizer | $${assistantMsg.cost.toFixed(4)} | ${
+        assistantMsg.tokens.input + assistantMsg.tokens.output
+      } (${assistantMsg.tokens.input}/${assistantMsg.tokens.output}) |
+| **Total** | **$${totalCost.toFixed(4)}** | **${totalTokens} (${totalInputTokens}/${totalOutputTokens})** |
 `
       const summaryPart: MessageV2.Part = {
         id: Identifier.ascending("part"),
