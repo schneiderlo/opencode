@@ -688,24 +688,31 @@ export async function runHeavyWorkflow(
         { input: 0, output: 0 },
       )
       const totalCost = assistantMsg.cost + subAgentCost
-      const totalTokens =
-        assistantMsg.tokens.input + assistantMsg.tokens.output + subAgentTokens.input + subAgentTokens.output
+      const totalInputTokens = assistantMsg.tokens.input + subAgentTokens.input
+      const totalOutputTokens = assistantMsg.tokens.output + subAgentTokens.output
+      const totalTokens = totalInputTokens + totalOutputTokens
       const summaryText = `
 ## Heavy Mode Synthesis Complete
 
 **Total Cost:** $${totalCost.toFixed(4)}
-**Total Tokens:** ${totalTokens}
+**Total Tokens:** ${totalTokens} (Input: ${totalInputTokens}, Output: ${totalOutputTokens})
 
 ### Breakdown:
 *   **Planner:**
     *   Cost: $${plannerResult.cost.toFixed(4)}
-    *   Tokens: ${plannerResult.tokens.input + plannerResult.tokens.output}
+    *   Tokens: ${plannerResult.tokens.input + plannerResult.tokens.output} (Input: ${
+        plannerResult.tokens.input
+      }, Output: ${plannerResult.tokens.output})
 *   **Sub-agents (Accumulated):**
     *   Cost: $${subAgentCost.toFixed(4)}
-    *   Tokens: ${subAgentTokens.input + subAgentTokens.output}
+    *   Tokens: ${subAgentTokens.input + subAgentTokens.output} (Input: ${subAgentTokens.input}, Output: ${
+        subAgentTokens.output
+      })
 *   **Synthesizer:**
     *   Cost: $${assistantMsg.cost.toFixed(4)}
-    *   Tokens: ${assistantMsg.tokens.input + assistantMsg.tokens.output}
+    *   Tokens: ${assistantMsg.tokens.input + assistantMsg.tokens.output} (Input: ${
+        assistantMsg.tokens.input
+      }, Output: ${assistantMsg.tokens.output})
 `
       const summaryPart: MessageV2.Part = {
         id: Identifier.ascending("part"),
