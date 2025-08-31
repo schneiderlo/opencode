@@ -4,7 +4,11 @@ import {
   generateObject,
   streamText,
   type ModelMessage,
+  type LanguageModelUsage,
+  type ProviderMetadata,
 } from "ai"
+import { Decimal } from "decimal.js"
+import type { ModelsDev } from "../provider/models"
 
 import PROMPT_HEAVY_PLANNER from "./prompt/heavy_planner.txt"
 import PROMPT_HEAVY_SYNTHESIZER from "./prompt/heavy_synthesizer.txt"
@@ -24,6 +28,31 @@ import { Storage } from "../storage/storage"
 import { Session } from "./index"
 
 const log = Log.create({ service: "session" })
+
+function getUsage(model: ModelsDev.Model, usage: LanguageModelUsage, metadata?: ProviderMetadata) {
+  const tokens = {
+    input: usage.inputTokens ?? 0,
+    output: usage.outputTokens ?? 0,
+    reasoning: usage?.reasoningTokens ?? 0,
+    cache: {
+      write: (metadata?.["anthropic"]?.["cacheCreationInputTokens"] ??
+        // @ts-expect-error
+        metadata?.["bedrock"]?.["usage"]?.["cacheWriteInputTokens"] ??
+        0) as number,
+      read: usage.cachedInputTokens ?? 0,
+    },
+  }
+  return {
+    cost: new Decimal(0)
+      .add(new Decimal(tokens.input).mul(model.cost?.input ?? 0).div(1_000_000))
+      .add(new Decimal(tokens.output).mul(model.cost?.output ?? 0).div(1_000_000))
+      .add(new Decimal(tokens.cache.read).mul(model.cost?.cache_read ?? 0).div(1_000_000))
+      .add(new Decimal(tokens.cache.write).mul(model.cost?.cache_write ?? 0).div(1_000_000))
+      .toNumber(),
+    tokens,
+  }
+}
+
 
 // --- Internal helper functions ---
 async function updateMessage(msg: MessageV2.Info) {
@@ -77,6 +106,16 @@ export type ExecutorTaskResult = {
   status: "completed" | "failed"
   report?: string
   error?: string
+  cost: number
+  tokens: {
+    input: number
+    output: number
+    reasoning: number
+    cache: {
+      read: number
+      write: number
+    }
+  }
 }
 
 // --- Events ---
@@ -117,7 +156,19 @@ export type RunHeavyWorkflowArgs = {
 }
 
 // --- Internal Helper Functions ---
-async function _runPlannerAgent(input: Session.ChatInput): Promise<PlannerOutput> {
+async function _runPlannerAgent(input: Session.ChatInput): Promise<{
+  plan: PlannerOutput
+  cost: number
+  tokens: {
+    input: number
+    output: number
+    reasoning: number
+    cache: {
+      read: number
+      write: number
+    }
+  }
+}> {
   const cfg = await Config.get()
   const heavy = cfg.heavy
 
@@ -172,6 +223,7 @@ async function _runPlannerAgent(input: Session.ChatInput): Promise<PlannerOutput
 
     // Some providers may return stringified JSON despite schema; handle it
     const object: unknown = (res as any).object
+    const usage = getUsage(info, res.usage, res.providerMetadata)
     if (typeof object === "string") {
       // Some providers return a raw JSON string even when using generateObject; log raw content
       try {
@@ -179,9 +231,9 @@ async function _runPlannerAgent(input: Session.ChatInput): Promise<PlannerOutput
       } catch {}
       const parsed = JSON.parse(object)
       const validated = PlannerOutputSchema.parse(parsed)
-      return validated
+      return { plan: validated, ...usage }
     }
-    return object as PlannerOutput
+    return { plan: object as PlannerOutput, ...usage }
   } catch (e) {
     log.warn("planner.generateObject.failed", { error: (e as Error)?.message })
   }
@@ -244,8 +296,9 @@ async function _runPlannerAgent(input: Session.ChatInput): Promise<PlannerOutput
 
   const parsed = extractJSONObject(raw)
   const validated = PlannerOutputSchema.safeParse(parsed)
+  const usage = getUsage(info, textResult.usage, textResult.providerMetadata)
   if (validated.success) {
-    return validated.data
+    return { plan: validated.data, ...usage }
   }
 
   throw new Error("Planner could not generate a valid plan")
@@ -416,7 +469,7 @@ async function _runExecutorAgents(
       if (Array.isArray(heavyTools?.denied_tools)) {
         for (const id of heavyTools!.denied_tools!) toolOverrides[id] = false
       }
-              const result = await Session.chat({
+      const result = await Session.chat({
         sessionID: child.id,
         providerID: pick.providerID,
         modelID: pick.modelID,
@@ -447,6 +500,8 @@ async function _runExecutorAgents(
         modelID: pick.modelID,
         status: "completed" as const,
         report: reportText,
+        cost: result.info.cost,
+        tokens: result.info.tokens,
       }
     } catch (e) {
       const msg = (e as Error)?.message ?? "unknown"
@@ -459,6 +514,16 @@ async function _runExecutorAgents(
         modelID: pick.modelID,
         status: "failed",
         error: msg,
+        cost: 0,
+        tokens: {
+          input: 0,
+          output: 0,
+          reasoning: 0,
+          cache: {
+            read: 0,
+            write: 0,
+          },
+        },
       }
       return failed
     }
@@ -477,9 +542,8 @@ async function _runSynthesizerAgent(args: {
   inputModelID: string
   reports: string[]
   abortSignal: AbortSignal
-  processor: any
 }) {
-  const { plan, assistantMsg, sessionID, inputProviderID, inputModelID, reports, abortSignal, processor } = args
+  const { plan, assistantMsg, sessionID, inputProviderID, inputModelID, reports, abortSignal } = args
   await Bus.publish(Heavy.SynthesisStarted, { sessionID })
 
   const cfg = await Config.get()
@@ -524,20 +588,21 @@ async function _runSynthesizerAgent(args: {
     ],
   })
 
-  await processor.process(stream)
-
-  // Emit synthesis completed event
-  await Bus.publish(Heavy.SynthesisCompleted, { sessionID })
+  return stream
 }
 
 // --- The Main Exported Workflow Function ---
 export async function runHeavyWorkflow(
   args: RunHeavyWorkflowArgs,
 ): Promise<{ info: MessageV2.Assistant; parts: MessageV2.Part[] }> {
-  const { input, assistantMsg, abortSignal, state } = args
+  const { input, assistantMsg, abortSignal, state, processor } = args
 
   try {
-    const plan = await _runPlannerAgent(input)
+    const plannerResult = await _runPlannerAgent(input)
+    const plan = plannerResult.plan
+    assistantMsg.cost += plannerResult.cost
+    assistantMsg.tokens.input += plannerResult.tokens.input
+    assistantMsg.tokens.output += plannerResult.tokens.output
     // reflect planner model if configured
     const cfg = await Config.get()
     const plannerModelStr = cfg.heavy?.planner_model
@@ -575,7 +640,7 @@ export async function runHeavyWorkflow(
         .map((r) => r.report ?? "")
         .filter((x) => x && x.trim().length > 0)
 
-      await _runSynthesizerAgent({
+      const stream = await _runSynthesizerAgent({
         plan,
         assistantMsg,
         sessionID: input.sessionID,
@@ -583,8 +648,73 @@ export async function runHeavyWorkflow(
         inputModelID: input.modelID,
         reports,
         abortSignal,
-        processor: args.processor,
       })
+      await processor.process(stream)
+      // Emit synthesis completed event
+      await Bus.publish(Heavy.SynthesisCompleted, { sessionID: input.sessionID })
+      // Now create the summary message
+      const summaryMsg: MessageV2.Assistant = {
+        id: Identifier.ascending("message"),
+        role: "assistant",
+        sessionID: input.sessionID,
+        time: {
+          created: Date.now(),
+          completed: Date.now(),
+        },
+        cost: 0,
+        tokens: {
+          input: 0,
+          output: 0,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
+        },
+        modelID: assistantMsg.modelID,
+        providerID: assistantMsg.providerID,
+        system: [],
+        mode: "heavy",
+        path: {
+          cwd: "",
+          root: "",
+        },
+      }
+      await updateMessage(summaryMsg)
+      const subAgentCost = execResults.reduce((acc, r) => acc + r.cost, 0)
+      const subAgentTokens = execResults.reduce(
+        (acc, r) => {
+          acc.input += r.tokens.input
+          acc.output += r.tokens.output
+          return acc
+        },
+        { input: 0, output: 0 },
+      )
+      const totalCost = assistantMsg.cost + subAgentCost
+      const totalTokens =
+        assistantMsg.tokens.input + assistantMsg.tokens.output + subAgentTokens.input + subAgentTokens.output
+      const summaryText = `
+## Heavy Mode Synthesis Complete
+
+**Total Cost:** $${totalCost.toFixed(4)}
+**Total Tokens:** ${totalTokens}
+
+### Breakdown:
+*   **Planner:**
+    *   Cost: $${plannerResult.cost.toFixed(4)}
+    *   Tokens: ${plannerResult.tokens.input + plannerResult.tokens.output}
+*   **Sub-agents (Accumulated):**
+    *   Cost: $${subAgentCost.toFixed(4)}
+    *   Tokens: ${subAgentTokens.input + subAgentTokens.output}
+*   **Synthesizer:**
+    *   Cost: $${assistantMsg.cost.toFixed(4)}
+    *   Tokens: ${assistantMsg.tokens.input + assistantMsg.tokens.output}
+`
+      const summaryPart: MessageV2.Part = {
+        id: Identifier.ascending("part"),
+        messageID: summaryMsg.id,
+        sessionID: input.sessionID,
+        type: "text",
+        text: summaryText,
+      }
+      await updatePart(summaryPart)
     } else {
       const part: MessageV2.Part = {
         id: Identifier.ascending("part"),
