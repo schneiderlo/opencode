@@ -1,0 +1,52 @@
+.root {
+  padding: 1rem;
+  border: 1px solid var(--c-border);
+  border-radius: 0.5rem;
+  background-color: var(--c-bg-panel);
+}
+
+.title {
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.table {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.5rem;
+  font-family: var(--f-mono);
+  font-size: 0.875rem;
+}
+
+.header,
+.row,
+.footer {
+  display: contents;
+}
+
+.header > div {
+  font-weight: 600;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.row > div,
+.footer > div {
+  padding-top: 0.5rem;
+}
+
+.footer > div {
+  font-weight: 600;
+  border-top: 1px solid var(--c-border);
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.row > div:nth-child(2),
+.header > div:nth-child(2),
+.footer > div:nth-child(2),
+.row > div:nth-child(3),
+.header > div:nth-child(3),
+.footer > div:nth-child(3) {
+  text-align: right;
+}

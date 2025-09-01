@@ -205,6 +205,38 @@ export namespace MessageV2 {
   })
   export type HeavyPlanPart = z.infer<typeof HeavyPlanPart>
 
+  export const HeavyAgentReportPart = PartBase.extend({
+    type: z.literal("heavy_agent_report"),
+    reports: z.any(),
+  }).openapi({
+    ref: "HeavyAgentReportPart",
+  })
+  export type HeavyAgentReportPart = z.infer<typeof HeavyAgentReportPart>
+
+  const CostAndTokens = z.object({
+    cost: z.number(),
+    tokens: z.object({
+      input: z.number(),
+      output: z.number(),
+      reasoning: z.number(),
+      cache: z.object({
+        read: z.number(),
+        write: z.number(),
+      }),
+    }),
+  });
+
+  export const HeavyCostPart = PartBase.extend({
+    type: z.literal("heavy_cost"),
+    total: CostAndTokens,
+    planner: CostAndTokens,
+    executors: CostAndTokens,
+    synthesizer: CostAndTokens,
+  }).openapi({
+    ref: "HeavyCostPart",
+  });
+  export type HeavyCostPart = z.infer<typeof HeavyCostPart>
+
   export const StepStartPart = PartBase.extend({
     type: z.literal("step-start"),
   }).openapi({
@@ -256,6 +288,8 @@ export namespace MessageV2 {
       PatchPart,
       AgentPart,
       HeavyPlanPart,
+      HeavyAgentReportPart,
+      HeavyCostPart,
     ])
     .openapi({
       ref: "Part",
@@ -285,7 +319,6 @@ export namespace MessageV2 {
       root: z.string(),
     }),
     summary: z.boolean().optional(),
-    level: z.string().optional(),
     cost: z.number(),
     tokens: z.object({
       input: z.number(),

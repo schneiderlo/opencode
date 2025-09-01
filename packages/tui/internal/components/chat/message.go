@@ -440,19 +440,12 @@ func renderText(
 				WithBorderColor(t.BackgroundPanel()),
 			)
 		}
-		borderColor := t.BackgroundPanel()
-		if isThinking {
-		} else if assistantMsg, ok := message.(opencode.AssistantMessage); ok && assistantMsg.Level == "warning" {
-			borderColor = t.Warning()
-		}
 		return renderContentBlock(
 			app,
 			content,
 			width,
 			WithNoBorder(),
 			WithBackgroundColor(t.Background()),
-			WithBorderColor(borderColor),
-			WithBorderBoth(true),
 		)
 	}
 	return ""

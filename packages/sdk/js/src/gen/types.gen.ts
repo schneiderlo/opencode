@@ -227,6 +227,9 @@ export type Part =
   | ({
       type: "heavy_plan"
     } & HeavyPlanPart)
+  | ({
+      type: "heavy_agent_report"
+    } & HeavyAgentReportPart)
 
 export type TextPart = {
   id: string
@@ -425,6 +428,11 @@ export type AgentPart = {
   messageID: string
   type: "agent"
   name: string
+  source?: {
+    value: string
+    start: number
+    end: number
+  }
   input?: unknown
   output?: unknown
   metadata?: {
@@ -440,12 +448,33 @@ export type HeavyPlanPart = {
   plan?: unknown
 }
 
+export type HeavyAgentReportPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: "heavy_agent_report"
+  taskId: number
+  taskQuestion: string
+  taskDeliverable: string
+  report: string
+  model: string
+  childSessionID: string
+}
+
 export type EventMessagePartRemoved = {
   type: "message.part.removed"
   properties: {
     sessionID: string
     messageID: string
     partID: string
+  }
+}
+
+export type EventStorageWrite = {
+  type: "storage.write"
+  properties: {
+    key: string
+    content?: unknown
   }
 }
 
@@ -483,14 +512,6 @@ export type EventFileEdited = {
   type: "file.edited"
   properties: {
     file: string
-  }
-}
-
-export type EventStorageWrite = {
-  type: "storage.write"
-  properties: {
-    key: string
-    content?: unknown
   }
 }
 
@@ -1235,10 +1256,10 @@ export type AgentPartInput = {
   id?: string
   type: "agent"
   name: string
-  input?: unknown
-  output?: unknown
-  metadata?: {
-    [key: string]: unknown
+  source?: {
+    value: string
+    start: number
+    end: number
   }
 }
 
@@ -1533,6 +1554,36 @@ export type SessionHeavyRespondPlanResponses = {
 }
 
 export type SessionHeavyRespondPlanResponse = SessionHeavyRespondPlanResponses[keyof SessionHeavyRespondPlanResponses]
+
+export type SessionHeavyGetAgentReportsData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: never
+  url: "/session/{id}/heavy/agent-reports"
+}
+
+export type SessionHeavyGetAgentReportsResponses = {
+  /**
+   * Agent reports retrieved successfully
+   */
+  200: Array<{
+    taskId: number
+    taskQuestion: string
+    taskDeliverable: string
+    report: string
+    model: string
+    childSessionID: string
+    timestamp: number
+  }>
+}
+
+export type SessionHeavyGetAgentReportsResponse =
+  SessionHeavyGetAgentReportsResponses[keyof SessionHeavyGetAgentReportsResponses]
 
 export type SessionInitData = {
   body?: {

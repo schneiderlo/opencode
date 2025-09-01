@@ -373,7 +373,6 @@ type AssistantMessage struct {
 	Tokens     AssistantMessageTokens `json:"tokens,required"`
 	Error      AssistantMessageError  `json:"error"`
 	Summary    bool                   `json:"summary"`
-	Level      string                 `json:"level"`
 	JSON       assistantMessageJSON   `json:"-"`
 }
 
@@ -393,7 +392,6 @@ type assistantMessageJSON struct {
 	Tokens      apijson.Field
 	Error       apijson.Field
 	Summary     apijson.Field
-	Level       apijson.Field
 	raw         string
 	ExtraFields map[string]apijson.Field
 }

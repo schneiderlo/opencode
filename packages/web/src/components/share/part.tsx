@@ -27,6 +27,7 @@ import { ContentBash } from "./content-bash"
 import { ContentError } from "./content-error"
 import { formatDuration } from "../share/common"
 import { ContentMarkdown } from "./content-markdown"
+import { HeavyCost } from "./content-heavy_cost"
 import type { MessageV2 } from "opencode/session/message-v2"
 import type { Diagnostic } from "vscode-languageserver-types"
 
@@ -190,6 +191,11 @@ export function Part(props: PartProps) {
               <ContentError>{formatErrorString(props.part.state.error)}</ContentError>
               <Spacer />
             </div>
+          )
+        }
+        {
+          props.part.type === "heavy_cost" && (
+            <HeavyCost part={props.part} />
           )
         }
         {

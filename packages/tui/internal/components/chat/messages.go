@@ -374,6 +374,18 @@ func (m *messagesComponent) renderView() tea.Cmd {
 							lastStreamingReasoningID = rp.ID
 							break
 						}
+					case opencode.HeavyCostPart:
+						content, cached = m.cache.Get(part.ID)
+						if !cached {
+							content = renderHeavyCost(m.app, part, width)
+							m.cache.Set(part.ID, content)
+						}
+						if content != "" {
+							partCount++
+							lineCount += lipgloss.Height(content) + 1
+							blocks = append(blocks, content)
+							hasContent = true
+						}
 					}
 				}
 			}
@@ -1299,6 +1311,50 @@ func formatTokensAndCost(
 		formattedTokens,
 		int(percentage),
 		formattedCost,
+	)
+}
+
+func renderHeavyCost(app *app.App, part opencode.HeavyCostPart, width int) string {
+	t := theme.CurrentTheme()
+	style := styles.NewStyle().Width(width - 6)
+
+	// Helper function to format a row
+	formatRow := func(title string, cost float64, tokens opencode.HeavyCostPartTokens) string {
+		totalTokens := tokens.Input + tokens.Output + tokens.Reasoning + tokens.Cache.Read + tokens.Cache.Write
+		return fmt.Sprintf("%-12s $%*.2f %8d tokens", title, 7, cost, int(totalTokens))
+	}
+
+	// Building the content string
+	var sb strings.Builder
+	sb.WriteString(style.Bold(true).Render("Heavy Mode Cost Breakdown"))
+	sb.WriteString("\n\n")
+
+	// Table Headers
+	sb.WriteString(style.Bold(true).Render(
+		fmt.Sprintf("%-12s %-10s %s", "Component", "Cost", "Tokens"),
+	))
+	sb.WriteString("\n")
+	sb.WriteString(style.Render(strings.Repeat("-", 38)))
+	sb.WriteString("\n")
+
+	// Table Rows
+	sb.WriteString(style.Render(formatRow("Planner", part.Planner.Cost, part.Planner.Tokens)))
+	sb.WriteString("\n")
+	sb.WriteString(style.Render(formatRow("Executors", part.Executors.Cost, part.Executors.Tokens)))
+	sb.WriteString("\n")
+	sb.WriteString(style.Render(formatRow("Synthesizer", part.Synthesizer.Cost, part.Synthesizer.Tokens)))
+	sb.WriteString("\n")
+	sb.WriteString(style.Render(strings.Repeat("-", 38)))
+	sb.WriteString("\n")
+
+	// Total Row
+	sb.WriteString(style.Bold(true).Render(formatRow("Total", part.Total.Cost, part.Total.Tokens)))
+
+	return renderContentBlock(
+		app,
+		sb.String(),
+		width,
+		WithBorderColor(t.Primary()),
 	)
 }
 
