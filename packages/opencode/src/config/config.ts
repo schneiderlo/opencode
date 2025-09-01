@@ -358,6 +358,7 @@ export namespace Config {
           backoff_ms: z.number().int().optional().default(1000),
           rotate_models: z.boolean().optional().default(true),
           fail_on_empty: z.boolean().optional().default(true),
+          reflection: z.boolean().optional().describe("Enables the reflection agent to learn from failures."),
         })
         .optional(),
     })

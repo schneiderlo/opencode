@@ -8,6 +8,7 @@ import {
 
 import PROMPT_HEAVY_PLANNER from "./prompt/heavy_planner.txt"
 import PROMPT_HEAVY_SYNTHESIZER from "./prompt/heavy_synthesizer.txt"
+import PROMPT_HEAVY_REFLECTOR from "./prompt/heavy_reflector.txt"
 import PROMPT_JSON_INSTRUCTION from "./prompt/json_instruction.txt"
 
 import { Bus } from "../bus"
@@ -77,6 +78,8 @@ export type ExecutorTaskResult = {
   status: "completed" | "failed"
   report?: string
   error?: string
+  reflection?: string
+  attempts: number
 }
 
 // --- Events ---
@@ -312,6 +315,42 @@ async function _generatePlannerRawText(input: Session.ChatInput): Promise<string
   }
 }
 
+async function _runReflectionAgent(args: {
+  question: string
+  error: string
+  providerID: string
+  modelID: string
+  reflectionHistory: string[]
+}): Promise<string> {
+  const { question, error, providerID, modelID, reflectionHistory } = args
+  try {
+    const { language } = await Provider.getModel(providerID, modelID)
+
+    const history = reflectionHistory.length
+      ? `\n\nPREVIOUS REFLECTIONS (for context):\n- ${reflectionHistory.join("\n- ")}`
+      : ""
+
+    const result = await generateText({
+      model: language,
+      system: PROMPT_HEAVY_REFLECTOR,
+      prompt: `THE TASK:
+${question}
+
+THE ERROR:
+${error}
+${history}`,
+      temperature: 0,
+      maxOutputTokens: 500,
+    })
+
+    return result.text
+  } catch (e) {
+    log.warn("reflection_agent.error", { error: (e as Error).message })
+    // Return empty string if reflection fails, so the retry can proceed without it
+    return ""
+  }
+}
+
 export async function runWithConcurrency<T, R>(
   items: T[],
   maxConcurrent: number,
@@ -369,8 +408,8 @@ async function _runExecutorAgents(
 ): Promise<ExecutorTaskResult[]> {
   const cfg = await Config.get()
   const limit = Math.max(1, cfg.heavy?.max_concurrent_agents ?? 3)
-  // Read the new config value
   const subAgentOutputMode = cfg.heavy?.sub_agent_output ?? "report"
+  const retryConfig = cfg.heavy?.retry
   log.info("executor.start", { sessionID, total: plan.sub_tasks.length, limit })
 
   const pool = (() => {
@@ -388,81 +427,123 @@ async function _runExecutorAgents(
   })()
 
   const results = await runWithConcurrency(plan.sub_tasks, limit, async (task, index) => {
+    let attempts = 0
+    const maxAttempts = retryConfig?.max_attempts ?? 1
+    let lastError: string | undefined
+    let lastReflection: string | undefined
+    const reflectionHistory: string[] = []
+
+    let currentQuestion = task.question
     const pick = pool.length ? pool[index % pool.length] : { providerID, modelID }
+
+    // Create one child session per task, to be reused across retries
     const child = await Session.create(sessionID)
     log.info("executor.task.start", { sessionID, childID: child.id, taskId: task.id, providerID: pick.providerID, modelID: pick.modelID })
+
     await Bus.publish(Heavy.TaskStarted, {
       sessionID,
       taskId: task.id,
-      question: task.question,
+      question: task.question, // publish original question
       model: `${pick.providerID}/${pick.modelID}`,
       childSessionID: child.id,
     })
-    try {
-      const heavyTools = cfg.heavy?.tools
-      const toolOverrides: Record<string, boolean> = {}
-      if (heavyTools?.read_only) {
-        for (const id of ["edit", "write", "patch", "bash", "todowrite"]) {
-          toolOverrides[id] = false
+
+    while (attempts < maxAttempts) {
+      attempts++
+      try {
+        const heavyTools = cfg.heavy?.tools
+        const toolOverrides: Record<string, boolean> = {}
+        if (heavyTools?.read_only) {
+          for (const id of ["edit", "write", "patch", "bash", "todowrite"]) {
+            toolOverrides[id] = false
+          }
         }
-      }
-      if (Array.isArray(heavyTools?.allowed_tools) && heavyTools!.allowed_tools!.length) {
-        const all = ToolRegistry.ids()
-        const allowed = new Set(heavyTools!.allowed_tools!)
-        for (const id of all) {
-          if (!allowed.has(id)) toolOverrides[id] = false
+        if (Array.isArray(heavyTools?.allowed_tools) && heavyTools.allowed_tools.length) {
+          const all = ToolRegistry.ids()
+          const allowed = new Set(heavyTools.allowed_tools)
+          for (const id of all) {
+            if (!allowed.has(id)) toolOverrides[id] = false
+          }
         }
-      }
-      if (Array.isArray(heavyTools?.denied_tools)) {
-        for (const id of heavyTools!.denied_tools!) toolOverrides[id] = false
-      }
-              const result = await Session.chat({
-        sessionID: child.id,
-        providerID: pick.providerID,
-        modelID: pick.modelID,
-        tools: Object.keys(toolOverrides).length ? toolOverrides : undefined,
-        parts: [
-          {
-            type: "text",
-            text: task.question,
-          },
-        ],
-      })
-      const reportText = (() => {
-        // If user wants full text, format all parts
-        if (subAgentOutputMode === "full_text") {
-          return _formatPartsForFullText(result.parts)
+        if (Array.isArray(heavyTools?.denied_tools)) {
+          for (const id of heavyTools.denied_tools) toolOverrides[id] = false
         }
-        
-        // Otherwise, use the original logic for a concise report
-        const text = result.parts.find((p: MessageV2.Part) => p.type === "text") as MessageV2.TextPart | undefined
-        return text?.text ?? ""
-      })()
-      await Bus.publish(Heavy.TaskCompleted, { sessionID, taskId: task.id, report: reportText, childSessionID: child.id })
-      log.info("executor.task.done", { childID: child.id, taskId: task.id })
-      return {
-        taskId: task.id,
-        childSessionID: child.id,
-        providerID: pick.providerID,
-        modelID: pick.modelID,
-        status: "completed" as const,
-        report: reportText,
+
+        const result = await Session.chat({
+          sessionID: child.id,
+          providerID: pick.providerID,
+          modelID: pick.modelID,
+          tools: Object.keys(toolOverrides).length ? toolOverrides : undefined,
+          parts: [{ type: "text", text: currentQuestion }],
+        })
+
+        const reportText = (() => {
+          if (subAgentOutputMode === "full_text") {
+            return _formatPartsForFullText(result.parts)
+          }
+          const text = result.parts.find((p) => p.type === "text") as MessageV2.TextPart | undefined
+          return text?.text ?? ""
+        })()
+
+        await Bus.publish(Heavy.TaskCompleted, { sessionID, taskId: task.id, report: reportText, childSessionID: child.id })
+        log.info("executor.task.done", { childID: child.id, taskId: task.id, attempts })
+        return {
+          taskId: task.id,
+          childSessionID: child.id,
+          providerID: pick.providerID,
+          modelID: pick.modelID,
+          status: "completed" as const,
+          report: reportText,
+          attempts,
+          reflection: lastReflection,
+        }
+      } catch (e) {
+        lastError = (e as Error)?.message ?? "unknown"
+        log.warn("executor.task.attempt_failed", { childID: child.id, taskId: task.id, attempt: attempts, error: lastError })
+
+        if (retryConfig?.reflection && attempts < maxAttempts) {
+          const reflection = await _runReflectionAgent({
+            question: currentQuestion,
+            error: lastError,
+            providerID: pick.providerID,
+            modelID: pick.modelID,
+            reflectionHistory,
+          })
+
+          if (reflection && reflection.trim().length > 0) {
+            lastReflection = reflection
+            reflectionHistory.push(reflection)
+            currentQuestion = `REFLECTED GUIDANCE:
+${reflection}
+
+ORIGINAL TASK:
+${task.question}`
+            log.info("executor.task.reflection.generated", { childID: child.id, taskId: task.id, reflection })
+            // Optional: add a delay before retrying
+            if (retryConfig.backoff_ms && retryConfig.backoff_ms > 0) {
+              await new Promise(res => setTimeout(res, retryConfig.backoff_ms));
+            }
+            continue // continue to next attempt
+          }
+        }
+        // If no reflection or last attempt, break the loop to fail
+        break
       }
-    } catch (e) {
-      const msg = (e as Error)?.message ?? "unknown"
-      await Bus.publish(Heavy.TaskFailed, { sessionID, taskId: task.id, error: msg, childSessionID: child.id })
-      log.error("executor.task.error", { childID: child.id, taskId: task.id, error: msg })
-      const failed: ExecutorTaskResult = {
-        taskId: task.id,
-        childSessionID: child.id,
-        providerID: pick.providerID,
-        modelID: pick.modelID,
-        status: "failed",
-        error: msg,
-      }
-      return failed
     }
-    
+
+    // If loop finished due to failures
+    await Bus.publish(Heavy.TaskFailed, { sessionID, taskId: task.id, error: lastError!, childSessionID: child.id })
+    log.error("executor.task.error", { childID: child.id, taskId: task.id, error: lastError, attempts })
+    return {
+      taskId: task.id,
+      childSessionID: child.id,
+      providerID: pick.providerID,
+      modelID: pick.modelID,
+      status: "failed" as const,
+      error: lastError,
+      attempts,
+      reflection: lastReflection,
+    }
   })
 
   log.info("executor.end", { sessionID })
