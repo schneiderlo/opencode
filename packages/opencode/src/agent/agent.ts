@@ -9,6 +9,7 @@ import { mergeDeep } from "remeda"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
+import PROMPT_HEAVY from "./prompt/heavy.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 
@@ -122,6 +123,19 @@ export namespace Agent {
         tools: {
           ...defaultTools,
         },
+        mode: "primary",
+        native: true,
+      },
+      heavy: {
+        name: "heavy",
+        description: "Orchestrator agent that breaks complex requests into parallel sub-tasks. Use for large, multi-component tasks that can be worked on independently.",
+        options: {},
+        permission: agentPermission,
+        tools: {
+          heavy_plan: true,
+          ...defaultTools,
+        },
+        prompt: PROMPT_HEAVY,
         mode: "primary",
         native: true,
       },

@@ -69,13 +69,13 @@ import { Filesystem } from "@/util/filesystem"
 addDefaultParsers(parsers.parsers)
 
 class CustomSpeedScroll implements ScrollAcceleration {
-  constructor(private speed: number) {}
+  constructor(private speed: number) { }
 
   tick(_now?: number): number {
     return this.speed
   }
 
-  reset(): void {}
+  reset(): void { }
 }
 
 const context = createContext<{
@@ -242,29 +242,29 @@ export function Session() {
   command.register(() => [
     ...(sync.data.config.share !== "disabled"
       ? [
-          {
-            title: "Share session",
-            value: "session.share",
-            suggested: route.type === "session",
-            keybind: "session_share" as const,
-            disabled: !!session()?.share?.url,
-            category: "Session",
-            onSelect: async (dialog: any) => {
-              await sdk.client.session
-                .share({
-                  sessionID: route.sessionID,
-                })
-                .then((res) =>
-                  Clipboard.copy(res.data!.share!.url).catch(() =>
-                    toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
-                  ),
-                )
-                .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
-                .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
-              dialog.clear()
-            },
+        {
+          title: "Share session",
+          value: "session.share",
+          suggested: route.type === "session",
+          keybind: "session_share" as const,
+          disabled: !!session()?.share?.url,
+          category: "Session",
+          onSelect: async (dialog: any) => {
+            await sdk.client.session
+              .share({
+                sessionID: route.sessionID,
+              })
+              .then((res) =>
+                Clipboard.copy(res.data!.share!.url).catch(() =>
+                  toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
+                ),
+              )
+              .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
+              .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
+            dialog.clear()
           },
-        ]
+        },
+      ]
       : []),
     {
       title: "Rename session",
@@ -341,7 +341,7 @@ export function Session() {
       category: "Session",
       onSelect: async (dialog) => {
         const status = sync.data.session_status?.[route.sessionID]
-        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
+        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => { })
         const revert = session().revert?.messageID
         const message = messages().findLast((x) => (!revert || x.id < revert) && x.role === "user")
         if (!message) return
@@ -762,6 +762,23 @@ export function Session() {
       disabled: true,
       onSelect: (dialog) => {
         moveChild(-1)
+        dialog.clear()
+      },
+    },
+    {
+      title: "Go to parent session",
+      value: "session.parent",
+      keybind: "session_parent",
+      category: "Session",
+      disabled: !session()?.parentID,
+      onSelect: (dialog) => {
+        const parentID = session()?.parentID
+        if (parentID) {
+          navigate({
+            type: "session",
+            sessionID: parentID,
+          })
+        }
         dialog.clear()
       },
     },
@@ -1245,19 +1262,19 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
     const style: BoxProps =
       container === "block" || permission
         ? {
-            border: permissionIndex === 0 ? (["left", "right"] as const) : (["left"] as const),
-            paddingTop: 1,
-            paddingBottom: 1,
-            paddingLeft: 2,
-            marginTop: 1,
-            gap: 1,
-            backgroundColor: theme.backgroundPanel,
-            customBorderChars: SplitBorder.customBorderChars,
-            borderColor: permissionIndex === 0 ? theme.warning : theme.background,
-          }
+          border: permissionIndex === 0 ? (["left", "right"] as const) : (["left"] as const),
+          paddingTop: 1,
+          paddingBottom: 1,
+          paddingLeft: 2,
+          marginTop: 1,
+          gap: 1,
+          backgroundColor: theme.backgroundPanel,
+          customBorderChars: SplitBorder.customBorderChars,
+          borderColor: permissionIndex === 0 ? theme.warning : theme.background,
+        }
         : {
-            paddingLeft: 3,
-          }
+          paddingLeft: 3,
+        }
 
     return (
       <box
@@ -1701,6 +1718,74 @@ ToolRegistry.register<typeof TodoWriteTool>({
   },
 })
 
+ToolRegistry.register({
+  name: "heavy_plan",
+  container: "block",
+  render(props: ToolProps<any>) {
+    const { theme } = useTheme()
+    const keybind = useKeybind()
+
+    const subTasks = createMemo(() => props.metadata?.sub_tasks ?? [])
+    const progress = createMemo(() => props.metadata?.progress ?? { completed: 0, failed: 0, total: 0 })
+
+    const getStatusIcon = (status: string) => {
+      switch (status) {
+        case "pending":
+          return "○"
+        case "running":
+          return "◐"
+        case "completed":
+          return "✓"
+        case "error":
+          return "✗"
+        default:
+          return "○"
+      }
+    }
+
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case "pending":
+          return theme.textMuted
+        case "running":
+          return theme.accent
+        case "completed":
+          return theme.success
+        case "error":
+          return theme.error
+        default:
+          return theme.textMuted
+      }
+    }
+
+    return (
+      <>
+        <ToolTitle icon="⧗" fallback="Planning sub-tasks..." when={progress().total > 0}>
+          Heavy Plan ({progress().completed}/{progress().total} completed
+          {progress().failed > 0 ? `, ${progress().failed} failed` : ""})
+        </ToolTitle>
+        <Show when={subTasks().length > 0}>
+          <box paddingLeft={2} gap={1}>
+            <For each={subTasks()}>
+              {(task: any) => (
+                <text style={{ fg: getStatusColor(task.status) }}>
+                  {getStatusIcon(task.status)} {task.question || task.deliverable || `Sub-task #${task.id}`}
+                </text>
+              )}
+            </For>
+          </box>
+        </Show>
+        <text fg={theme.text}>
+          {keybind.print("session_child_cycle")}, {keybind.print("session_child_cycle_reverse")}
+          <span style={{ fg: theme.textMuted }}> to navigate child sessions, </span>
+          {keybind.print("session_parent")}
+          <span style={{ fg: theme.textMuted }}> to return to parent</span>
+        </text>
+      </>
+    )
+  },
+})
+
 function normalizePath(input?: string) {
   if (!input) return ""
   if (path.isAbsolute(input)) {
@@ -1708,6 +1793,7 @@ function normalizePath(input?: string) {
   }
   return input
 }
+
 
 function input(input: Record<string, any>, omit?: string[]): string {
   const primitives = Object.entries(input).filter(([key, value]) => {

@@ -599,3 +599,110 @@ ToolRegistry.register({
     )
   },
 })
+
+ToolRegistry.register({
+  name: "heavy_plan",
+  render(props) {
+    const subTasks = createMemo(() => props.metadata?.sub_tasks ?? [])
+    const progress = createMemo(() => props.metadata?.progress ?? { completed: 0, failed: 0, total: 0 })
+
+    const getStatusIcon = (status: string) => {
+      switch (status) {
+        case "pending":
+          return "○"
+        case "running":
+          return "◐"
+        case "completed":
+          return "✓"
+        case "error":
+          return "✗"
+        default:
+          return "○"
+      }
+    }
+
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case "pending":
+          return "text-text-muted"
+        case "running":
+          return "text-text-primary"
+        case "completed":
+          return "text-success"
+        case "error":
+          return "text-error"
+        default:
+          return "text-text-muted"
+      }
+    }
+
+    return (
+      <BasicTool
+        defaultOpen
+        icon="task"
+        trigger={{
+          title: "Heavy Plan",
+          subtitle: `${progress().completed}/${progress().total} completed${progress().failed > 0 ? `, ${progress().failed} failed` : ""}`,
+        }}
+      >
+        <div data-component="heavy-plan">
+          <Show when={progress().total > 0}>
+            <div data-slot="heavy-plan-progress">
+              <div
+                data-slot="heavy-plan-progress-bar"
+                style={{
+                  width: `${(progress().completed / progress().total) * 100}%`,
+                  "background-color": progress().failed > 0 ? "var(--warning)" : "var(--success)",
+                }}
+              />
+            </div>
+          </Show>
+          <div data-slot="heavy-plan-tasks">
+            <For each={subTasks()}>
+              {(task: any) => (
+                <div data-slot="heavy-plan-task" data-status={task.status}>
+                  <div data-slot="heavy-plan-task-header">
+                    <span data-slot="heavy-plan-task-icon" class={getStatusColor(task.status)}>
+                      {getStatusIcon(task.status)}
+                    </span>
+                    <span data-slot="heavy-plan-task-id">#{task.id}</span>
+                    <Show when={task.deliverable}>
+                      <span data-slot="heavy-plan-task-deliverable">{task.deliverable}</span>
+                    </Show>
+                    <Show when={task.sessionId}>
+                      <a
+                        data-slot="heavy-plan-task-link"
+                        href={`/session/${task.sessionId}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          // Navigate to child session
+                          window.location.href = `/session/${task.sessionId}`
+                        }}
+                      >
+                        View →
+                      </a>
+                    </Show>
+                  </div>
+                  <Show when={task.question}>
+                    <div data-slot="heavy-plan-task-question">{task.question}</div>
+                  </Show>
+                  <Show when={task.error}>
+                    <div data-slot="heavy-plan-task-error">{task.error}</div>
+                  </Show>
+                </div>
+              )}
+            </For>
+          </div>
+          <Show when={props.output}>
+            {(output) => (
+              <div data-component="tool-output" data-scrollable>
+                <Markdown text={output()} />
+              </div>
+            )}
+          </Show>
+        </div>
+      </BasicTool>
+    )
+  },
+})
+

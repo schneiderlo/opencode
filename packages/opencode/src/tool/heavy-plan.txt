@@ -1,0 +1,38 @@
+Executes multiple independent sub-tasks in parallel using child sessions.
+
+This tool is designed for complex requests that can be broken down into independent, parallelizable units of work. Each sub-task runs in its own isolated session with its own context.
+
+**Input Schema:**
+- `sub_tasks`: An array of objects, each containing:
+  - `id`: A unique numeric identifier for the sub-task
+  - `question`: The specific prompt/task for the sub-agent to execute
+  - `deliverable`: A clear description of what the sub-agent should return
+  - `context`: System instructions that will be injected as context for this sub-agent
+
+**Important Notes:**
+- Sub-tasks should be independent and not depend on each other's outputs
+- Each sub-task runs in its own session with the `build` agent
+- Maximum 8 sub-tasks are allowed per call
+- Up to 3 sub-tasks run concurrently
+- Attachments from the original message are forwarded to all sub-agents
+- The tool aggregates results and file modifications from all sub-tasks
+
+**Example Usage:**
+```json
+{
+  "sub_tasks": [
+    {
+      "id": 1,
+      "question": "Implement the user authentication module",
+      "deliverable": "Complete auth module with login/logout functions",
+      "context": "You are implementing an authentication module. Focus on security best practices."
+    },
+    {
+      "id": 2,
+      "question": "Create the database schema for users",
+      "deliverable": "SQL migration file for user table",
+      "context": "You are a database specialist. Design an efficient schema for user data."
+    }
+  ]
+}
+```

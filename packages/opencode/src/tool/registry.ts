@@ -2,6 +2,7 @@ import { BashTool } from "./bash"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
+import { HeavyPlanTool } from "./heavy-plan"
 import { ListTool } from "./ls"
 import { BatchTool } from "./batch"
 import { ReadTool } from "./read"
@@ -102,6 +103,7 @@ export namespace ToolRegistry {
       TodoReadTool,
       WebSearchTool,
       CodeSearchTool,
+      HeavyPlanTool,
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
       ...custom,
     ]
