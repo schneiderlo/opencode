@@ -5,6 +5,9 @@ import { generateObject, type ModelMessage } from "ai"
 import { SystemPrompt } from "../session/system"
 import { Instance } from "../project/instance"
 import { mergeDeep } from "remeda"
+import { Log } from "../util/log"
+
+const log = Log.create({ service: "agent" })
 
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
@@ -21,6 +24,7 @@ export namespace Agent {
       mode: z.enum(["subagent", "primary", "all"]),
       native: z.boolean().optional(),
       hidden: z.boolean().optional(),
+      default: z.boolean().optional(),
       topP: z.number().optional(),
       temperature: z.number().optional(),
       color: z.string().optional(),
@@ -259,6 +263,19 @@ export namespace Agent {
         item.permission = mergeAgentPermissions(cfg.permission ?? {}, permission ?? {})
       }
     }
+
+    // Mark the default agent
+    const defaultName = cfg.default_agent ?? "build"
+    const defaultCandidate = result[defaultName]
+    if (defaultCandidate && defaultCandidate.mode !== "subagent") {
+      defaultCandidate.default = true
+    } else {
+      // Fall back to "build" if configured default is invalid
+      if (result["build"]) {
+        result["build"].default = true
+      }
+    }
+
     return result
   })
 
@@ -268,6 +285,12 @@ export namespace Agent {
 
   export async function list() {
     return state().then((x) => Object.values(x))
+  }
+
+  export async function defaultAgent(): Promise<string> {
+    const agents = await state()
+    const defaultCandidate = Object.values(agents).find((a) => a.default)
+    return defaultCandidate?.name ?? "build"
   }
 
   export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {

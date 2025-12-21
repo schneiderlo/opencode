@@ -176,13 +176,15 @@ function App() {
   const exit = useExit()
   const promptRef = usePromptRef()
 
+  const [terminalTitleEnabled, setTerminalTitleEnabled] = createSignal(kv.get("terminal_title_enabled", true))
+
   createEffect(() => {
     console.log(JSON.stringify(route.data))
   })
 
   // Update terminal window title based on current route and session
   createEffect(() => {
-    if (Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
+    if (!terminalTitleEnabled() || Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
       renderer.setTerminalTitle("OpenCode")
@@ -227,7 +229,8 @@ function App() {
 
   let continued = false
   createEffect(() => {
-    if (continued || sync.status !== "complete" || !args.continue) return
+    // When using -c, session list is loaded in blocking phase, so we can navigate at "partial"
+    if (continued || sync.status === "loading" || !args.continue) return
     const match = sync.data.session
       .toSorted((a, b) => b.time.updated - a.time.updated)
       .find((x) => x.parentID === undefined)?.id
@@ -451,6 +454,21 @@ function App() {
         renderer.suspend()
         // pid=0 means send the signal to all processes in the process group
         process.kill(0, "SIGTSTP")
+      },
+    },
+    {
+      title: terminalTitleEnabled() ? "Disable terminal title" : "Enable terminal title",
+      value: "terminal.title.toggle",
+      keybind: "terminal_title_toggle",
+      category: "System",
+      onSelect: (dialog) => {
+        setTerminalTitleEnabled((prev) => {
+          const next = !prev
+          kv.set("terminal_title_enabled", next)
+          if (!next) renderer.setTerminalTitle("")
+          return next
+        })
+        dialog.clear()
       },
     },
   ])
