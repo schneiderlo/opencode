@@ -13,6 +13,7 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_HEAVY from "./prompt/heavy.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -117,6 +118,8 @@ export namespace Agent {
           PermissionNext.fromConfig({
             todoread: "deny",
             todowrite: "deny",
+            task: "allow",
+            map_reduce: "allow",
           }),
           user,
         ),
@@ -138,6 +141,8 @@ export namespace Agent {
             websearch: "allow",
             codesearch: "allow",
             read: "allow",
+            task: "allow",
+            map_reduce: "allow",
             external_directory: {
               [Truncate.GLOB]: "allow",
             },
@@ -195,6 +200,23 @@ export namespace Agent {
           user,
         ),
         prompt: PROMPT_SUMMARY,
+      },
+      heavy: {
+        name: "heavy",
+        mode: "primary",
+        options: {},
+        native: true,
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            map_reduce: "allow",
+            task: "allow",
+          }),
+          user,
+        ),
+        description: `Heavy Reasoning Agent. Uses a Map-Reduce pattern to decompose complex queries into parallel sub-tasks. Best for comprehensive research, multi-part questions, or tasks requiring deep analysis.`,
+        prompt: PROMPT_HEAVY,
       },
     }
 

@@ -1,0 +1,10 @@
+This tool allows you to execute multiple research or coding tasks in parallel using specialized sub-agents.
+Use this when a user's request is complex and can be broken down into distinct, independent sub-problems.
+This follows a Map-Reduce pattern: you "Map" the problem into sub-tasks, the system executes them, and you "Reduce" the results into a final answer.
+
+The tool accepts a list of tasks. For each task, you must specify:
+- description: A clear, short summary of what needs to be done (for the UI dashboard).
+- prompt: The detailed instructions for the sub-agent.
+- subagent_type: The specialized agent to use (e.g., "explore", "general").
+
+The tool returns the combined output of all sub-tasks.

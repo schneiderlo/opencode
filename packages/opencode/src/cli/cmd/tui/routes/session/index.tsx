@@ -49,6 +49,7 @@ import { useKeyboard, useRenderer, useTerminalDimensions, type JSX } from "@open
 import { useSDK } from "@tui/context/sdk"
 import { useCommandDialog } from "@tui/component/dialog-command"
 import { useKeybind } from "@tui/context/keybind"
+import { MapReduce } from "./tool-map-reduce"
 import { Header } from "./header"
 import { parsePatch } from "diff"
 import { useDialog } from "../../ui/dialog"
@@ -1466,6 +1467,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         <Match when={props.part.tool === "skill"}>
           <Skill {...toolprops} />
         </Match>
+        <Match when={props.part.tool === "map_reduce"}>
+          <MapReduce {...toolprops} />
+        </Match>
         <Match when={true}>
           <GenericTool {...toolprops} />
         </Match>
@@ -1474,7 +1478,7 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
   )
 }
 
-type ToolProps<T extends Tool.Info> = {
+export type ToolProps<T extends Tool.Info> = {
   input: Partial<Tool.InferParameters<T>>
   metadata: Partial<Tool.InferMetadata<T>>
   permission: Record<string, any>
@@ -1482,7 +1486,7 @@ type ToolProps<T extends Tool.Info> = {
   output?: string
   part: ToolPart
 }
-function GenericTool(props: ToolProps<any>) {
+export function GenericTool(props: ToolProps<any>) {
   return (
     <InlineTool icon="⚙" pending="Writing command..." complete={true} part={props.part}>
       {props.tool} {input(props.input)}
@@ -1501,7 +1505,7 @@ function ToolTitle(props: { fallback: string; when: any; icon: string; children:
   )
 }
 
-function InlineTool(props: {
+export function InlineTool(props: {
   icon: string
   iconColor?: RGBA
   complete: any
@@ -1574,7 +1578,7 @@ function InlineTool(props: {
   )
 }
 
-function BlockTool(props: {
+export function BlockTool(props: {
   title: string
   children: JSX.Element
   onClick?: () => void
