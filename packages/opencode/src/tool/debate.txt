@@ -1,0 +1,18 @@
+Facilitates a structured debate between perspectives to resolve conflicts.
+
+Use this tool when multiple perspectives from the Council have reached conflicting conclusions on an important point. The debate allows perspectives to respond to each other's arguments, surfacing nuances and helping reach a more informed conclusion.
+
+The tool orchestrates multiple rounds of back-and-forth between conflicting perspectives, with each perspective seeing and responding to the other's arguments.
+
+Parameters:
+- topic: The specific point of contention being debated
+- perspectives: Array of 2-3 perspectives to include in the debate, each with:
+  - name: The perspective name (e.g., "Security Expert", "Pragmatist")
+  - position: Their initial position/argument on the topic
+- rounds: Number of debate rounds (1-2 recommended, max 3)
+
+The tool returns a structured summary of the debate including:
+- Each perspective's arguments and counter-arguments
+- Points of agreement that emerged
+- Remaining points of disagreement
+- A synthesis noting which arguments were strongest
