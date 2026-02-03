@@ -14,6 +14,7 @@ import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_HEAVY from "./prompt/heavy.txt"
+import PROMPT_COUNCIL from "./prompt/council.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -37,6 +38,14 @@ export namespace Agent {
           modelID: z.string(),
           providerID: z.string(),
         })
+        .optional(),
+      modelPool: z
+        .array(
+          z.object({
+            modelID: z.string(),
+            providerID: z.string(),
+          }),
+        )
         .optional(),
       variant: z.string().optional(),
       prompt: z.string().optional(),
@@ -217,6 +226,24 @@ export namespace Agent {
         ),
         description: `Heavy Reasoning Agent. Uses a Map-Reduce pattern to decompose complex queries into parallel sub-tasks. Best for comprehensive research, multi-part questions, or tasks requiring deep analysis.`,
         prompt: PROMPT_HEAVY,
+      },
+      council: {
+        name: "council",
+        mode: "primary",
+        options: {},
+        native: true,
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            map_reduce: "allow",
+            debate: "allow",
+            task: "allow",
+          }),
+          user,
+        ),
+        description: `Council Agent. Provides comprehensive, well-rounded answers by consulting multiple specialized perspectives in parallel and synthesizing their insights. Best for complex decisions, architecture reviews, or when you need balanced expert analysis.`,
+        prompt: PROMPT_COUNCIL,
       },
     }
 
