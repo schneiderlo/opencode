@@ -64,7 +64,7 @@ export namespace Config {
   const managedDir = managedConfigDir()
 
   // Custom merge function that concatenates array fields instead of replacing them
-  function merge(target: Info, source: Info): Info {
+  function mergeConfigConcatArrays(target: Info, source: Info): Info {
     const merged = mergeDeep(target, source)
     if (target.plugin && source.plugin) {
       merged.plugin = Array.from(new Set([...target.plugin, ...source.plugin]))
@@ -111,16 +111,12 @@ export namespace Config {
       }
     }
 
-    const token = await Control.token()
-    if (token) {
-    }
-
     // Global user config overrides remote config.
-    result = merge(result, await global())
+    result = mergeConfigConcatArrays(result, await global())
 
     // Custom config path overrides global config.
     if (Flag.OPENCODE_CONFIG) {
-      result = merge(result, await loadFile(Flag.OPENCODE_CONFIG))
+      result = mergeConfigConcatArrays(result, await loadFile(Flag.OPENCODE_CONFIG))
       log.debug("loaded custom config", { path: Flag.OPENCODE_CONFIG })
     }
 
@@ -148,7 +144,7 @@ export namespace Config {
       if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
         for (const file of ["opencode.jsonc", "opencode.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
-          result = merge(result, await loadFile(path.join(dir, file)))
+          result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
           // to satisfy the type checker
           result.agent ??= {}
           result.mode ??= {}
