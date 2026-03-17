@@ -1,5 +1,5 @@
 import { test, expect } from "../fixtures"
-import { openSettings, closeDialog, withSession } from "../actions"
+import { openSettings, closeDialog, waitTerminalFocusIdle, withSession } from "../actions"
 import { keybindButtonSelector, terminalSelector } from "../selectors"
 import { modKey } from "../utils"
 
@@ -32,23 +32,54 @@ test("changing sidebar toggle keybind works", async ({ page, gotoSession }) => {
 
   await closeDialog(page, dialog)
 
-  const main = page.locator("main")
-  const initialClasses = (await main.getAttribute("class")) ?? ""
-  const initiallyClosed = initialClasses.includes("xl:border-l")
+  const button = page.getByRole("button", { name: /toggle sidebar/i }).first()
+  const initiallyClosed = (await button.getAttribute("aria-expanded")) !== "true"
 
   await page.keyboard.press(`${modKey}+Shift+H`)
-  await page.waitForTimeout(100)
+  await expect(button).toHaveAttribute("aria-expanded", initiallyClosed ? "true" : "false")
 
-  const afterToggleClasses = (await main.getAttribute("class")) ?? ""
-  const afterToggleClosed = afterToggleClasses.includes("xl:border-l")
+  const afterToggleClosed = (await button.getAttribute("aria-expanded")) !== "true"
   expect(afterToggleClosed).toBe(!initiallyClosed)
 
   await page.keyboard.press(`${modKey}+Shift+H`)
+  await expect(button).toHaveAttribute("aria-expanded", initiallyClosed ? "false" : "true")
+
+  const finalClosed = (await button.getAttribute("aria-expanded")) !== "true"
+  expect(finalClosed).toBe(initiallyClosed)
+})
+
+test("sidebar toggle keybind guards against shortcut conflicts", async ({ page, gotoSession }) => {
+  await gotoSession()
+
+  const dialog = await openSettings(page)
+  await dialog.getByRole("tab", { name: "Shortcuts" }).click()
+
+  const keybindButton = dialog.locator(keybindButtonSelector("sidebar.toggle"))
+  await expect(keybindButton).toBeVisible()
+
+  const initialKeybind = await keybindButton.textContent()
+  expect(initialKeybind).toContain("B")
+
+  await keybindButton.click()
+  await expect(keybindButton).toHaveText(/press/i)
+
+  await page.keyboard.press(`${modKey}+Shift+KeyP`)
   await page.waitForTimeout(100)
 
-  const finalClasses = (await main.getAttribute("class")) ?? ""
-  const finalClosed = finalClasses.includes("xl:border-l")
-  expect(finalClosed).toBe(initiallyClosed)
+  const toast = page.locator('[data-component="toast"]').last()
+  await expect(toast).toBeVisible()
+  await expect(toast).toContainText(/already/i)
+
+  await keybindButton.click()
+  await expect(keybindButton).toContainText("B")
+
+  const stored = await page.evaluate(() => {
+    const raw = localStorage.getItem("settings.v3")
+    return raw ? JSON.parse(raw) : null
+  })
+  expect(stored?.keybinds?.["sidebar.toggle"]).toBeUndefined()
+
+  await closeDialog(page, dialog)
 })
 
 test("sidebar toggle keybind guards against shortcut conflicts", async ({ page, gotoSession }) => {
@@ -305,7 +336,7 @@ test("changing terminal toggle keybind works", async ({ page, gotoSession }) => 
   await expect(terminal).not.toBeVisible()
 
   await page.keyboard.press(`${modKey}+Y`)
-  await expect(terminal).toBeVisible()
+  await waitTerminalFocusIdle(page, { term: terminal })
 
   await page.keyboard.press(`${modKey}+Y`)
   await expect(terminal).not.toBeVisible()
