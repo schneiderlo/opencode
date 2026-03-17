@@ -394,21 +394,3 @@ export const dfmt: Info = {
     return which("dfmt") !== null
   },
 }
-
-export const cljfmt: Info = {
-  name: "cljfmt",
-  command: ["cljfmt", "fix", "--quiet", "$FILE"],
-  extensions: [".clj", ".cljs", ".cljc", ".edn"],
-  async enabled() {
-    return Bun.which("cljfmt") !== null
-  },
-}
-
-export const dfmt: Info = {
-  name: "dfmt",
-  command: ["dfmt", "-i", "$FILE"],
-  extensions: [".d"],
-  async enabled() {
-    return Bun.which("dfmt") !== null
-  },
-}
