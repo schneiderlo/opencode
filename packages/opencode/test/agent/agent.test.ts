@@ -692,6 +692,8 @@ test("defaultAgent throws when all primary agents are disabled", async () => {
       agent: {
         build: { disable: true },
         plan: { disable: true },
+        heavy: { disable: true },
+        council: { disable: true },
       },
     },
   })

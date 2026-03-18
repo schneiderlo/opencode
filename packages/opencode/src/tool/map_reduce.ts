@@ -10,6 +10,7 @@ import { iife } from "@/util/iife"
 import { defer } from "@/util/defer"
 import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
+import { MessageID } from "../session/schema"
 
 const parameters = z.object({
   tasks: z
@@ -151,7 +152,7 @@ export const MapReduceTool = Tool.define("map_reduce", async (ctx) => {
               providerID: msg.info.providerID,
             }
 
-            const messageID = Identifier.ascending("message")
+            const messageID = MessageID.ascending()
 
             // Handle cancellation
             function cancel() {

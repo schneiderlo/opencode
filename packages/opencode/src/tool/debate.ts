@@ -3,7 +3,6 @@ import DESCRIPTION from "./debate.txt"
 import z from "zod"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
-import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { SessionPrompt } from "../session/prompt"
 import { defer } from "@/util/defer"
@@ -12,6 +11,8 @@ import { PermissionNext } from "@/permission/next"
 import { Instance } from "../project/instance"
 import path from "path"
 import { mkdir } from "fs/promises"
+import { MessageID } from "../session/schema"
+import { ModelID, ProviderID } from "../provider/schema"
 
 const parameters = z.object({
   topic: z.string().describe("The specific point of contention being debated"),
@@ -40,13 +41,13 @@ export const DebateTool = Tool.define("debate", async (initCtx) => {
       const rounds = params.rounds ?? 1
 
       // Helper to select a model from the pool (random) or fall back to default
-      const selectModel = (defaultModel: {
-        modelID: string
-        providerID: string
-      }): { modelID: string; providerID: string } => {
+      const selectModel = (defaultModel: { modelID: ModelID; providerID: ProviderID }) => {
         if (modelPool && modelPool.length > 0) {
           const idx = Math.floor(Math.random() * modelPool.length)
-          return modelPool[idx]
+          return {
+            modelID: ModelID.make(modelPool[idx].modelID),
+            providerID: ProviderID.make(modelPool[idx].providerID),
+          }
         }
         return defaultModel
       }
@@ -172,7 +173,7 @@ Be thorough and substantive. This debate is meant to surface the best arguments 
             ],
           })
 
-          const messageID = Identifier.ascending("message")
+          const messageID = MessageID.ascending()
 
           function cancel() {
             SessionPrompt.cancel(session.id)
