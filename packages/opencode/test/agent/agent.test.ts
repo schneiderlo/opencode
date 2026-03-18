@@ -104,6 +104,22 @@ test("general agent denies todo tools", async () => {
   })
 })
 
+test("council agent only allows council_run", async () => {
+  await using tmp = await tmpdir()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const council = await Agent.get("council")
+      expect(council).toBeDefined()
+      expect(council?.mode).toBe("primary")
+      expect(evalPerm(council, "council_run")).toBe("allow")
+      expect(evalPerm(council, "map_reduce")).toBe("deny")
+      expect(evalPerm(council, "task")).toBe("deny")
+      expect(evalPerm(council, "debate")).toBe("deny")
+    },
+  })
+})
+
 test("compaction agent denies all permissions", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({

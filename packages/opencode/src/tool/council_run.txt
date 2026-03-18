@@ -1,0 +1,13 @@
+Run a full Council analysis in code. Use this instead of manually orchestrating `map_reduce` or `debate`.
+
+Provide the user query and any explicit constraints or context you want the Council to keep in view.
+
+This tool will:
+- create a structured consultation plan
+- consult 2-4 `general` workers with typed outputs
+- optionally run debate for the strongest conflicts
+- synthesize the results into a structured recommendation
+- write artifacts under `.opencode/council/<session>/<message>/`
+- write a reproducible `COUNCIL_REPORT.md` inside that artifact directory
+
+Use this tool when the request benefits from multiple perspectives, tradeoff analysis, or a durable report.

@@ -241,9 +241,7 @@ export namespace Agent {
           defaults,
           PermissionNext.fromConfig({
             "*": "deny",
-            map_reduce: "allow",
-            debate: "allow",
-            task: "allow",
+            council_run: "allow",
           }),
           user,
         ),

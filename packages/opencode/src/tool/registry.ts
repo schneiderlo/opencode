@@ -29,6 +29,8 @@ import { LspTool } from "./lsp"
 import { Truncate } from "./truncation"
 
 import { ApplyPatchTool } from "./apply_patch"
+import { CouncilRunTool } from "./council_run"
+import { DebateTool } from "./debate"
 import { MapReduceTool } from "./map_reduce"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
@@ -119,6 +121,8 @@ export namespace ToolRegistry {
       CodeSearchTool,
       SkillTool,
       ApplyPatchTool,
+      CouncilRunTool,
+      DebateTool,
       MapReduceTool,
       ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
