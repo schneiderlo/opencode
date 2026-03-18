@@ -224,8 +224,7 @@ export namespace Agent {
           defaults,
           PermissionNext.fromConfig({
             "*": "deny",
-            map_reduce: "allow",
-            task: "allow",
+            heavy_run: "allow",
           }),
           user,
         ),

@@ -120,6 +120,21 @@ test("council agent only allows council_run", async () => {
   })
 })
 
+test("heavy agent only allows heavy_run", async () => {
+  await using tmp = await tmpdir()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const heavy = await Agent.get("heavy")
+      expect(heavy).toBeDefined()
+      expect(heavy?.mode).toBe("primary")
+      expect(evalPerm(heavy, "heavy_run")).toBe("allow")
+      expect(evalPerm(heavy, "map_reduce")).toBe("deny")
+      expect(evalPerm(heavy, "task")).toBe("deny")
+    },
+  })
+})
+
 test("compaction agent denies all permissions", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({

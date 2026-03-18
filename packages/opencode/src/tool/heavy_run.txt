@@ -1,0 +1,12 @@
+Run a heavy reasoning workflow in code.
+
+Use this when the request benefits from explicit decomposition into multiple independent tasks, parallel execution, and a final synthesis that brings those results back together.
+
+This tool will:
+- create a structured task plan
+- execute 2-6 tasks in parallel
+- use `explore` for search/navigation work and `general` for reasoning work
+- persist artifacts under `.opencode/heavy/<session>/<message>/`
+- write `HEAVY_REPORT.md`
+
+Prefer this tool over manually orchestrating `map_reduce` when the user wants a dependable deep-analysis path.

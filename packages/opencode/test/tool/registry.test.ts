@@ -15,6 +15,7 @@ describe("tool.registry", () => {
         const ids = await ToolRegistry.ids()
         expect(ids).toContain("council_run")
         expect(ids).toContain("debate")
+        expect(ids).toContain("heavy_run")
       },
     })
   })
