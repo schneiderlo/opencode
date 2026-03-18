@@ -3,6 +3,7 @@ import z from "zod"
 const Task = z.object({
   id: z.string(),
   title: z.string(),
+  mode: z.enum(["direct", "heavy"]).default("direct"),
   agent: z.enum(["explore", "general"]),
   goal: z.string(),
   prompt: z.string(),
@@ -29,6 +30,13 @@ export namespace HeavySchema {
       details: z.string().default(""),
       findings: z.array(z.string()).default([]),
       next_steps: z.array(z.string()).default([]),
+      nested: z
+        .object({
+          depth: z.number().int().min(0),
+          dir: z.string(),
+          report: z.string(),
+        })
+        .optional(),
     })
     .meta({
       ref: "HeavyTaskResult",
@@ -55,9 +63,18 @@ export namespace HeavySchema {
       plan: z.string(),
       tasks: z.array(z.string()),
       synthesis: z.string(),
+      nested: z.array(z.string()).default([]),
     })
     .meta({
       ref: "HeavyPaths",
     })
   export type Paths = z.infer<typeof Paths>
+
+  export const Input = z.object({
+    query: z.string(),
+    context: z.array(z.string()).default([]),
+    depth: z.number().int().min(0).default(0),
+    max_depth: z.number().int().min(0).max(3).default(2),
+  })
+  export type Input = z.infer<typeof Input>
 }

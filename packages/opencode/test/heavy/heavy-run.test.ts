@@ -211,6 +211,8 @@ describe("heavy.heavy-run", () => {
           {
             query: "How should heavy mode work?",
             context: ["Prefer explicit progress"],
+            depth: 0,
+            max_depth: 2,
           },
           state.ctx,
         ),
@@ -227,9 +229,10 @@ describe("heavy.heavy-run", () => {
 
     expect(result.output).toContain("Heavy report:")
     expect(result.output).toContain("Tasks:")
-    expect(result.output).toContain("- Scan codebase (explore)")
+    expect(result.output).toContain("- Scan codebase (explore, direct)")
     expect(result.output).toContain("Use heavy_run as the default decomposition runtime")
     expect(result.metadata.planPath).toBe(path.join(root, "plan.json"))
+    expect(result.metadata.nestedPaths).toEqual([])
     expect(result.metadata.taskPaths).toEqual([
       path.join(root, "tasks", "scan.json"),
       path.join(root, "tasks", "design.json"),
@@ -252,5 +255,197 @@ describe("heavy.heavy-run", () => {
     expect(exec?.metadata?.tasks[0].status).toBe("completed")
     expect(exec?.metadata?.tasks[0].sessionID).toMatch(/^ses_/)
     expect(exec?.metadata?.tasks[0].preview).toContain("The current heavy mode is prompt-led.")
+  })
+
+  test("supports bounded nested heavy runs", async () => {
+    await using tmp = await tmpdir()
+    const state = await setup(tmp.path)
+    const prompt = spyOn(SessionPrompt, "prompt")
+    let step = 0
+    prompt.mockImplementation(
+      (async (input: Parameters<typeof SessionPrompt.prompt>[0]) => {
+        step++
+        if (step === 1) {
+          return reply({
+            sessionID: input.sessionID,
+            parentID: state.ctx.messageID,
+            text: "plan",
+            structured: {
+              summary: "Split direct exploration from a broader architecture question.",
+              tasks: [
+                {
+                  id: "scan",
+                  title: "Scan codebase",
+                  mode: "direct",
+                  agent: "explore",
+                  goal: "Find the current heavy implementation.",
+                  prompt: "Inspect the current heavy runtime files.",
+                  deliverable: "A map of the relevant files.",
+                },
+                {
+                  id: "arch",
+                  title: "Architecture",
+                  mode: "heavy",
+                  agent: "general",
+                  goal: "Figure out the right heavy recursion model.",
+                  prompt: "Design the heavy recursion model and the observability needed for it.",
+                  deliverable: "A bounded recursive heavy design.",
+                },
+              ],
+              synthesis_focus: ["recursion", "visibility"],
+            },
+          })
+        }
+        if (step === 2) {
+          return reply({
+            sessionID: input.sessionID,
+            parentID: state.ctx.messageID,
+            text: "scan",
+            structured: {
+              task_id: "scan",
+              title: "Scan codebase",
+              summary: "Heavy already has a code-owned root runtime.",
+              details: "The top-level flow already plans, executes, and synthesizes in code.",
+              findings: ["The current heavy path is flat."],
+              next_steps: ["Add bounded recursion."],
+            },
+          })
+        }
+        if (step === 3) {
+          return reply({
+            sessionID: input.sessionID,
+            parentID: state.ctx.messageID,
+            text: "nested plan",
+            structured: {
+              summary: "Break the architecture question into concrete subproblems.",
+              tasks: [
+                {
+                  id: "depth",
+                  title: "Depth policy",
+                  mode: "direct",
+                  agent: "general",
+                  goal: "Choose a recursion limit.",
+                  prompt: "Propose a max depth for heavy recursion.",
+                  deliverable: "A bounded recursion policy.",
+                },
+                {
+                  id: "ux",
+                  title: "Visibility",
+                  mode: "direct",
+                  agent: "general",
+                  goal: "Show the recursion tree clearly.",
+                  prompt: "Design the progress/report UX for nested heavy runs.",
+                  deliverable: "A visibility plan.",
+                },
+              ],
+              synthesis_focus: ["depth", "ux"],
+            },
+          })
+        }
+        if (step === 4) {
+          return reply({
+            sessionID: input.sessionID,
+            parentID: state.ctx.messageID,
+            text: "depth",
+            structured: {
+              task_id: "depth",
+              title: "Depth policy",
+              summary: "Nested heavy should stop after depth two by default.",
+              details: "That keeps the tree useful without turning runs into uncontrolled fanout.",
+              findings: ["Use a hard max_depth default of 2."],
+              next_steps: ["Expose depth in artifacts and metadata."],
+            },
+          })
+        }
+        if (step === 5) {
+          return reply({
+            sessionID: input.sessionID,
+            parentID: state.ctx.messageID,
+            text: "ux",
+            structured: {
+              task_id: "ux",
+              title: "Visibility",
+              summary: "Nested runs should be visible in both progress and reports.",
+              details: "Each parent task should surface its nested report path and preview.",
+              findings: ["Show nested report paths in the parent result."],
+              next_steps: ["Persist nested run directories under the parent task tree."],
+            },
+          })
+        }
+        if (step === 6) {
+          return reply({
+            sessionID: input.sessionID,
+            parentID: state.ctx.messageID,
+            text: "nested synth",
+            structured: {
+              summary: "Bound recursion and show it clearly.",
+              answer: "Use a capped nested heavy run with visible artifact links.",
+              key_points: ["Use a hard max depth default of 2.", "Show nested report paths in the parent result."],
+              next_steps: [
+                "Expose depth in artifacts and metadata.",
+                "Persist nested run directories under the parent task tree.",
+              ],
+              open_questions: [],
+            },
+          })
+        }
+        return reply({
+          sessionID: input.sessionID,
+          parentID: state.ctx.messageID,
+          text: "top synth",
+          structured: {
+            summary: "Heavy should recurse in a bounded, visible way.",
+            answer: "Allow planner-selected nested heavy runs with a hard depth cap.",
+            key_points: ["The current heavy path is flat.", "Use a hard max depth default of 2."],
+            next_steps: ["Expose depth in artifacts and metadata."],
+            open_questions: [],
+          },
+        })
+      }) as any,
+    )
+
+    const tool = await HeavyRunTool.init()
+    const result = await Instance.provide({
+      directory: tmp.path,
+      fn: () =>
+        tool.execute(
+          {
+            query: "How should heavy recursion work?",
+            context: ["Bring back nested heavy fanout"],
+            depth: 0,
+            max_depth: 2,
+          },
+          state.ctx,
+        ),
+    })
+
+    const root = path.join(tmp.path, ".opencode", "heavy", state.ctx.sessionID, state.ctx.messageID)
+    const nested = path.join(root, "nested", "arch")
+    expect(await Bun.file(path.join(nested, "plan.json")).exists()).toBe(true)
+    expect(await Bun.file(path.join(nested, "synthesis.json")).exists()).toBe(true)
+    expect(await Bun.file(path.join(nested, "HEAVY_REPORT.md")).exists()).toBe(true)
+    expect(result.metadata.nestedPaths).toEqual([nested])
+    expect(result.output).toContain("Nested runs: 1")
+    expect(result.output).toContain("- Architecture (general, heavy)")
+
+    const task = (await Bun.file(path.join(root, "tasks", "arch.json")).json()) as {
+      result: {
+        nested?: {
+          depth: number
+          dir: string
+          report: string
+        }
+      }
+    }
+    expect(task.result.nested?.depth).toBe(1)
+    expect(task.result.nested?.dir).toBe(nested)
+    expect(task.result.nested?.report).toBe(path.join(nested, "HEAVY_REPORT.md"))
+
+    const report = await Bun.file(path.join(root, "HEAVY_REPORT.md")).text()
+    expect(report).toContain("Nested report:")
+
+    const exec = state.calls.findLast((item) => item.metadata?.dir === root && item.metadata?.stage === "executing")
+    expect(exec?.metadata?.tasks[1].mode).toBe("heavy")
+    expect(exec?.metadata?.tasks[1].reportPath).toBe(path.join(nested, "HEAVY_REPORT.md"))
   })
 })

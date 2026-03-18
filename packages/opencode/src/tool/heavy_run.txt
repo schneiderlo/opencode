@@ -5,6 +5,7 @@ Use this when the request benefits from explicit decomposition into multiple ind
 This tool will:
 - create a structured task plan
 - execute 2-6 tasks in parallel
+- recursively decompose broad subproblems with bounded depth when useful
 - use `explore` for search/navigation work and `general` for reasoning work
 - persist artifacts under `.opencode/heavy/<session>/<message>/`
 - write `HEAVY_REPORT.md`

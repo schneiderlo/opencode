@@ -19,11 +19,19 @@ export namespace HeavyArtifact {
   export async function init(input: { sessionID: SessionID; messageID: MessageID }) {
     const root = dir(input)
     await mkdir(path.join(root, "tasks"), { recursive: true })
+    await mkdir(path.join(root, "nested"), { recursive: true })
     return root
   }
 
   export function task(id: string) {
     return clean(id) || "task"
+  }
+
+  export async function child(root: string, id: string) {
+    const dir = path.join(root, "nested", task(id))
+    await mkdir(path.join(dir, "tasks"), { recursive: true })
+    await mkdir(path.join(dir, "nested"), { recursive: true })
+    return dir
   }
 
   export async function json(file: string, data: unknown) {

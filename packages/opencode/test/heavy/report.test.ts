@@ -11,6 +11,7 @@ describe("heavy.report", () => {
           {
             id: "scan",
             title: "Scan codebase",
+            mode: "direct",
             agent: "explore",
             goal: "Find the relevant files.",
             prompt: "Inspect the codebase for heavy mode implementation points.",
@@ -24,6 +25,7 @@ describe("heavy.report", () => {
           task: {
             id: "scan",
             title: "Scan codebase",
+            mode: "direct",
             agent: "explore",
             goal: "Find the relevant files.",
             prompt: "Inspect the codebase for heavy mode implementation points.",
