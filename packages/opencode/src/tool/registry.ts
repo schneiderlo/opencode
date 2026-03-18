@@ -29,6 +29,7 @@ import { LspTool } from "./lsp"
 import { Truncate } from "./truncation"
 
 import { ApplyPatchTool } from "./apply_patch"
+import { MapReduceTool } from "./map_reduce"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
 
