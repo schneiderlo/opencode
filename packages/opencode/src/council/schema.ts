@@ -60,6 +60,7 @@ export namespace CouncilSchema {
       recommendations: z.array(z.string()).min(1),
       tradeoffs: z.array(z.string()).default([]),
       unknowns: z.array(z.string()).default([]),
+      confidence: z.enum(["low", "medium", "high"]).optional(),
     })
     .meta({
       ref: "CouncilPerspectiveResult",
@@ -95,4 +96,19 @@ export namespace CouncilSchema {
       ref: "CouncilSynthesis",
     })
   export type Synthesis = z.infer<typeof Synthesis>
+
+  export const Paths = z
+    .object({
+      root: z.string(),
+      request: z.string(),
+      plan: z.string(),
+      perspectives: z.array(z.string()),
+      debates: z.array(z.string()),
+      synthesis: z.string(),
+      report: z.string(),
+    })
+    .meta({
+      ref: "CouncilPaths",
+    })
+  export type Paths = z.infer<typeof Paths>
 }

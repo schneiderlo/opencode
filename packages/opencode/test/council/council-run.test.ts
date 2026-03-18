@@ -160,45 +160,47 @@ describe("council.council-run", () => {
             sessionID: input.sessionID,
             parentID: ctx.messageID,
             text: "architect",
-            structured: {
-              perspective: "Architect",
-              executive_summary: "Code should own the flow.",
-              findings: ["Prompt-only orchestration is fragile."],
-              recommendations: ["Move orchestration into council_run."],
-              tradeoffs: ["More code to maintain."],
-              unknowns: [],
-            },
-          })
-        }
+          structured: {
+            perspective: "Architect",
+            executive_summary: "Code should own the flow.",
+            findings: ["Council should generate artifacts in code."],
+            recommendations: ["Move orchestration into council_run."],
+            tradeoffs: ["More code to maintain."],
+            unknowns: [],
+            confidence: "high",
+          },
+        })
+      }
         if (i === 3) {
           return reply({
             sessionID: input.sessionID,
             parentID: ctx.messageID,
             text: "pragmatist",
-            structured: {
-              perspective: "Pragmatist",
-              executive_summary: "Ship the smallest useful slice.",
-              findings: ["The runtime mismatch is the immediate problem."],
-              recommendations: ["Start with planning, consult, and synthesis."],
-              tradeoffs: ["The first slice will still be iterative."],
-              unknowns: [],
-            },
-          })
-        }
+          structured: {
+            perspective: "Pragmatist",
+            executive_summary: "Ship the smallest useful slice.",
+            findings: ["Council should generate artifacts in code."],
+            recommendations: ["Start with planning, consult, and synthesis."],
+            tradeoffs: ["The first slice will still be iterative."],
+            unknowns: [],
+            confidence: "medium",
+          },
+        })
+      }
         return reply({
           sessionID: input.sessionID,
           parentID: ctx.messageID,
-          text: "synthesis",
-          structured: {
-            recommendation: "Use council_run as the code-owned path.",
-            rationale: ["It removes prompt/runtime drift."],
-            agreements: ["Council should generate artifacts in code."],
-            disagreements: [],
-            tradeoffs: ["More orchestration code."],
-            next_steps: ["Add end-to-end tests."],
-            open_questions: [],
-          },
-        })
+        text: "synthesis",
+        structured: {
+          recommendation: "Use council_run as the code-owned path.",
+          rationale: ["It removes prompt/runtime drift."],
+          agreements: [],
+          disagreements: [],
+          tradeoffs: [],
+          next_steps: [],
+          open_questions: [],
+        },
+      })
       }) as any,
     )
 
@@ -219,12 +221,30 @@ describe("council.council-run", () => {
     const root = path.join(tmp.path, ".opencode", "council", ctx.sessionID, ctx.messageID)
     expect(await Bun.file(path.join(root, "request.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "plan.json")).exists()).toBe(true)
+    expect(await Bun.file(path.join(root, "paths.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "synthesis.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "COUNCIL_REPORT.md")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "perspectives", "arch.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "perspectives", "prag.md")).exists()).toBe(true)
     expect(result.output).toContain("Council report:")
     expect(result.output).toContain("Use council_run as the code-owned path.")
+    expect(result.metadata.planPath).toBe(path.join(root, "plan.json"))
+    expect(result.metadata.synthesisPath).toBe(path.join(root, "synthesis.json"))
+    expect(result.metadata.perspectivePaths).toEqual([
+      path.join(root, "perspectives", "arch.json"),
+      path.join(root, "perspectives", "prag.json"),
+    ])
+    const synth = (await Bun.file(path.join(root, "synthesis.json")).json()) as {
+      agreements: string[]
+      next_steps: string[]
+      tradeoffs: string[]
+    }
+    expect(synth.agreements).toEqual(["Council should generate artifacts in code."])
+    expect(synth.next_steps).toEqual([
+      "Move orchestration into council_run.",
+      "Start with planning, consult, and synthesis.",
+    ])
+    expect(synth.tradeoffs).toEqual(["More code to maintain.", "The first slice will still be iterative."])
   })
 
   test("persists structured debate artifacts when debate runs", async () => {
@@ -271,15 +291,16 @@ describe("council.council-run", () => {
             parentID: ctx.messageID,
             text: "perspective",
             structured: {
-              perspective: i === 2 ? "Architect" : "Pragmatist",
-              executive_summary: "API shape matters.",
-              findings: ["The api contract should be explicit."],
-              recommendations: ["Refine the api before rollout."],
-              tradeoffs: [],
-              unknowns: [],
-            },
-          })
-        }
+            perspective: i === 2 ? "Architect" : "Pragmatist",
+            executive_summary: "API shape matters.",
+            findings: ["The api contract should be explicit."],
+            recommendations: ["Refine the api before rollout."],
+            tradeoffs: [],
+            unknowns: [],
+            confidence: "medium",
+          },
+        })
+      }
         return reply({
           sessionID: input.sessionID,
           parentID: ctx.messageID,
@@ -352,6 +373,7 @@ describe("council.council-run", () => {
     expect(json.participants.map((item) => item.name)).toEqual(["Architect", "Pragmatist"])
     expect(json.rounds[0].responses[0].perspective).toBe("Architect")
     expect(await Bun.file(path.join(root, "debates", "api.md")).exists()).toBe(true)
+    expect(await Bun.file(path.join(root, "paths.json")).exists()).toBe(true)
 
     debate.mockRestore()
   })

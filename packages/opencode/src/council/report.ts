@@ -55,6 +55,7 @@ export namespace CouncilReport {
           "",
           "Unknowns:",
           bullets(item.result.unknowns),
+          ...(item.result.confidence ? ["", `Confidence: ${item.result.confidence}`] : []),
           "",
         ]),
       ),

@@ -51,6 +51,7 @@ describe("council.report", () => {
             recommendations: ["Add a council_run tool before deeper redesign."],
             tradeoffs: ["The first slice will still be iterative."],
             unknowns: ["Need runtime validation under real model calls."],
+            confidence: "high",
           },
           json: ".opencode/council/a/b/perspectives/pragmatist.json",
           md: ".opencode/council/a/b/perspectives/pragmatist.md",
@@ -94,5 +95,6 @@ describe("council.report", () => {
     expect(text).toContain("Pragmatist")
     expect(text).toContain("## Debate Summary")
     expect(text).toContain("Participants: Pragmatist, Architect")
+    expect(text).toContain("Confidence: high")
   })
 })

@@ -172,6 +172,54 @@ export namespace CouncilService {
     return shape.parse(msg.info.structured)
   }
 
+  function uniq(items: string[]) {
+    return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)))
+  }
+
+  function recurring(input: Array<{ findings: string[]; recommendations: string[] }>) {
+    const count = new Map<string, number>()
+    for (const line of input.flatMap((item) => [...item.findings, ...item.recommendations])) {
+      const key = line.trim().toLowerCase()
+      if (!key) continue
+      count.set(key, (count.get(key) ?? 0) + 1)
+    }
+
+    return uniq(
+      input
+        .flatMap((item) => [...item.findings, ...item.recommendations])
+        .filter((line) => (count.get(line.trim().toLowerCase()) ?? 0) > 1),
+    )
+  }
+
+  function normalize(input: {
+    results: Array<CouncilSchema.Result>
+    debates: Array<CouncilSchema.Debate>
+    synth: CouncilSchema.Synthesis
+  }) {
+    return CouncilSchema.Synthesis.parse({
+      ...input.synth,
+      recommendation: input.synth.recommendation.trim() || input.synth.rationale[0] || "No recommendation captured.",
+      agreements: input.synth.agreements.length
+        ? uniq(input.synth.agreements)
+        : uniq([...recurring(input.results), ...input.debates.flatMap((item) => item.agreements)]),
+      disagreements: input.synth.disagreements.length
+        ? uniq(input.synth.disagreements)
+        : uniq([
+            ...input.debates.flatMap((item) => item.disagreements),
+            ...input.debates.map((item) => item.topic),
+          ]),
+      tradeoffs: input.synth.tradeoffs.length
+        ? uniq(input.synth.tradeoffs)
+        : uniq(input.results.flatMap((item) => item.tradeoffs)),
+      next_steps: input.synth.next_steps.length
+        ? uniq(input.synth.next_steps)
+        : uniq(input.results.flatMap((item) => item.recommendations)).slice(0, 5),
+      open_questions: input.synth.open_questions.length
+        ? uniq(input.synth.open_questions)
+        : uniq(input.results.flatMap((item) => item.unknowns)),
+    })
+  }
+
   export async function execute(input: { input: Input; ctx: Tool.Context }) {
     await input.ctx.ask({
       permission: "council_run",
@@ -197,7 +245,11 @@ export namespace CouncilService {
       },
     })
 
-    await CouncilArtifact.json(`${dir}/request.json`, input.input)
+    const requestPath = `${dir}/request.json`
+    const planPath = `${dir}/plan.json`
+    const synthesisPath = `${dir}/synthesis.json`
+    const reportPath = `${dir}/COUNCIL_REPORT.md`
+    await CouncilArtifact.json(requestPath, input.input)
 
     const planMsg = await run({
       ctx: input.ctx,
@@ -207,7 +259,7 @@ export namespace CouncilService {
       format: CouncilSchema.Plan,
     })
     const plan = parse(planMsg, CouncilSchema.Plan)
-    await CouncilArtifact.json(`${dir}/plan.json`, plan)
+    await CouncilArtifact.json(planPath, plan)
 
     input.ctx.metadata({
       title: "Council analysis",
@@ -270,6 +322,7 @@ export namespace CouncilService {
         return { task, result, json, md }
       }),
     )
+    const perspectivePaths = results.map((item) => item.json)
 
     const debates = [] as Array<CouncilSchema.Debate & { json: string; md?: string }>
     const pairs = input.input.include_debate
@@ -319,6 +372,7 @@ export namespace CouncilService {
       }
       debates.push({ ...debate, json, md: await Bun.file(md).exists() ? md : undefined })
     }
+    const debatePaths = debates.map((item) => item.json)
 
     input.ctx.metadata({
       title: "Council analysis",
@@ -341,25 +395,41 @@ export namespace CouncilService {
       format: CouncilSchema.Synthesis,
     })
     const synth = parse(synthMsg, CouncilSchema.Synthesis)
-    await CouncilArtifact.json(`${dir}/synthesis.json`, synth)
+    const normalized = normalize({
+      results: results.map((item) => item.result),
+      debates,
+      synth,
+    })
+    await CouncilArtifact.json(synthesisPath, normalized)
+
+    const paths = CouncilSchema.Paths.parse({
+      root: dir,
+      request: requestPath,
+      plan: planPath,
+      perspectives: perspectivePaths,
+      debates: debatePaths,
+      synthesis: synthesisPath,
+      report: reportPath,
+    })
+    await CouncilArtifact.json(`${dir}/paths.json`, paths)
 
     const report = CouncilReport.render({
       query: input.input.query,
       plan,
       results,
       debates,
-      synth,
+      synth: normalized,
     })
-    const reportPath = `${dir}/COUNCIL_REPORT.md`
     await Bun.write(reportPath, report)
 
     return {
       dir,
       reportPath,
+      paths,
       plan,
       results,
       debates,
-      synth,
+      synth: normalized,
     }
   }
 }

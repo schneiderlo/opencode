@@ -33,6 +33,10 @@ export const CouncilRunTool = Tool.define("council_run", {
       metadata: {
         reportPath: out.reportPath,
         artifactDir: out.dir,
+        planPath: out.paths.plan,
+        perspectivePaths: out.paths.perspectives,
+        debatePaths: out.paths.debates,
+        synthesisPath: out.paths.synthesis,
         perspectives: out.plan.perspectives.map((item) => item.name),
         debates: out.debates.map((item) => item.topic),
       },
