@@ -8,6 +8,21 @@ const Perspective = z.object({
   questions: z.array(z.string()).min(1),
 })
 
+const DebateParticipant = z.object({
+  name: z.string(),
+  position: z.string(),
+})
+
+const DebateResponse = z.object({
+  perspective: z.string(),
+  argument: z.string(),
+})
+
+const DebateRound = z.object({
+  round: z.number().int().positive(),
+  responses: z.array(DebateResponse),
+})
+
 export namespace CouncilSchema {
   export const Plan = z
     .object({
@@ -55,6 +70,8 @@ export namespace CouncilSchema {
     .object({
       topic: z.string(),
       summary: z.string(),
+      participants: z.array(DebateParticipant).min(2),
+      rounds: z.array(DebateRound).default([]),
       agreements: z.array(z.string()).default([]),
       disagreements: z.array(z.string()).default([]),
       transcript_path: z.string().optional(),

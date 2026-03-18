@@ -60,6 +60,16 @@ describe("council.report", () => {
         {
           topic: "whether debate should stay optional",
           summary: "Debate should stay targeted to real conflicts.",
+          participants: [
+            { name: "Pragmatist", position: "Keep debate narrow." },
+            { name: "Architect", position: "Normalize debate artifacts." },
+          ],
+          rounds: [
+            {
+              round: 1,
+              responses: [{ perspective: "Pragmatist", argument: "Only debate material issues." }],
+            },
+          ],
           agreements: ["Always synthesize in code."],
           disagreements: ["How often debate should trigger."],
           transcript_path: ".opencode/council/a/b/debate.md",
@@ -83,5 +93,6 @@ describe("council.report", () => {
     expect(text).toContain("Move Council orchestration into code behind council_run.")
     expect(text).toContain("Pragmatist")
     expect(text).toContain("## Debate Summary")
+    expect(text).toContain("Participants: Pragmatist, Architect")
   })
 })

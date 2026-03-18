@@ -1,6 +1,7 @@
 import { Agent } from "../agent/agent"
 import { Config } from "../config/config"
 import { CouncilArtifact } from "./artifact"
+import { CouncilDebate } from "./debate"
 import { CouncilReport } from "./report"
 import { CouncilSchema } from "./schema"
 import { defer } from "@/util/defer"
@@ -166,24 +167,6 @@ export namespace CouncilService {
     ].join("\n")
   }
 
-  function debatePairs(input: { plan: CouncilSchema.Plan; results: Array<CouncilSchema.Result> }) {
-    return input.plan.debate_topics
-      .map((topic) => ({
-        topic,
-        perspectives: input.results
-          .filter((item) =>
-            item.findings.some((line) => line.toLowerCase().includes(topic.toLowerCase())) ||
-            item.recommendations.some((line) => line.toLowerCase().includes(topic.toLowerCase())),
-          )
-          .slice(0, 3)
-          .map((item) => ({
-            name: item.perspective,
-            position: [item.executive_summary, ...item.recommendations].join("\n"),
-          })),
-      }))
-      .filter((item) => item.perspectives.length >= 2)
-  }
-
   function parse<T>(msg: MessageV2.WithParts, shape: z.ZodType<T>) {
     if (msg.info.role !== "assistant") throw new Error("Expected assistant message")
     return shape.parse(msg.info.structured)
@@ -289,14 +272,16 @@ export namespace CouncilService {
     )
 
     const debates = [] as Array<CouncilSchema.Debate & { json: string; md?: string }>
-    const pairs = input.input.include_debate ? debatePairs({ plan, results: results.map((item) => item.result) }) : []
+    const pairs = input.input.include_debate
+      ? CouncilDebate.select({ plan, results: results.map((item) => item.result) })
+      : []
     if (pairs.length) {
       input.ctx.metadata({
-        title: "Council analysis",
-        metadata: {
-          stage: "debating",
-          dir,
-          debates: pairs.map((item) => item.topic),
+          title: "Council analysis",
+          metadata: {
+            stage: "debating",
+            dir,
+            debates: pairs.map((item) => item.topic),
         },
       })
     }
@@ -306,7 +291,7 @@ export namespace CouncilService {
       const out = await tool.execute(
         {
           topic: item.topic,
-          perspectives: item.perspectives,
+          perspectives: item.participants,
           rounds: 1,
         },
         {
@@ -318,8 +303,10 @@ export namespace CouncilService {
       const debate = CouncilSchema.Debate.parse({
         topic: item.topic,
         summary: out.output,
-        agreements: [],
-        disagreements: item.perspectives.map((entry) => entry.name),
+        participants: out.metadata.participants ?? item.participants,
+        rounds: out.metadata.roundsData ?? [],
+        agreements: out.metadata.agreements ?? [],
+        disagreements: out.metadata.disagreements ?? [],
         transcript_path: out.metadata.transcriptPath,
       })
       const id = CouncilArtifact.debate(item.topic)

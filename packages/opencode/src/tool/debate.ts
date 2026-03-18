@@ -14,6 +14,31 @@ import { mkdir } from "fs/promises"
 import { MessageID } from "../session/schema"
 import { ModelID, ProviderID } from "../provider/schema"
 
+const DebateArtifact = z.object({
+  topic: z.string(),
+  summary: z.string(),
+  participants: z.array(
+    z.object({
+      name: z.string(),
+      position: z.string(),
+    }),
+  ),
+  rounds: z.array(
+    z.object({
+      round: z.number().int().positive(),
+      responses: z.array(
+        z.object({
+          perspective: z.string(),
+          argument: z.string(),
+        }),
+      ),
+    }),
+  ),
+  agreements: z.array(z.string()).default([]),
+  disagreements: z.array(z.string()).default([]),
+  transcript_path: z.string().optional(),
+})
+
 const parameters = z.object({
   topic: z.string().describe("The specific point of contention being debated"),
   perspectives: z
@@ -219,6 +244,17 @@ Be thorough and substantive. This debate is meant to surface the best arguments 
 
       // Generate synthesis
       const synthesis = generateDebateSynthesis(params.topic, params.perspectives, tracker.rounds)
+      const artifact = DebateArtifact.parse({
+        topic: params.topic,
+        summary: synthesis,
+        participants: params.perspectives,
+        rounds: tracker.rounds,
+        agreements: [],
+        disagreements: params.perspectives.map((item) => item.name),
+        transcript_path: filepath,
+      })
+      const jsonPath = path.join(outputDir, `debate_${Date.now()}.json`)
+      await Bun.write(jsonPath, JSON.stringify(artifact, null, 2) + "\n")
 
       return {
         title: `Debate completed: ${rounds} round(s)`,
@@ -227,6 +263,11 @@ Be thorough and substantive. This debate is meant to surface the best arguments 
           perspectives: params.perspectives.map((p) => p.name),
           rounds: tracker.rounds.length,
           transcriptPath: filepath,
+          jsonPath,
+          participants: artifact.participants,
+          agreements: artifact.agreements,
+          disagreements: artifact.disagreements,
+          roundsData: artifact.rounds,
         },
         output: synthesis,
       }
