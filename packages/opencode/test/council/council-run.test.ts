@@ -62,6 +62,7 @@ async function setup(dir: string) {
   return await Instance.provide({
     directory: dir,
     fn: async () => {
+      const calls: Array<{ title?: string; metadata?: any }> = []
       const session = await Session.create({ title: "Council test" })
       const user = await Session.updateMessage({
         id: MessageID.ascending(),
@@ -103,32 +104,37 @@ async function setup(dir: string) {
       })
 
       return {
-        sessionID: session.id,
-        messageID: msg.id,
-        callID: "test-call",
-        agent: "council",
-        abort: AbortSignal.any([]),
-        messages: [],
-        metadata: () => {},
-        ask: async () => {},
+        calls,
+        ctx: {
+          sessionID: session.id,
+          messageID: msg.id,
+          callID: "test-call",
+          agent: "council",
+          abort: AbortSignal.any([]),
+          messages: [],
+          metadata(input: { title?: string; metadata?: any }) {
+            calls.push(input)
+          },
+          ask: async () => {},
+        },
       }
     },
   })
 }
 
 describe("council.council-run", () => {
-  test("writes the full artifact tree without debate", async () => {
+  test("writes the full artifact tree without debate and surfaces progress", async () => {
     await using tmp = await tmpdir()
-    const ctx = await setup(tmp.path)
+    const state = await setup(tmp.path)
     const prompt = spyOn(SessionPrompt, "prompt")
-    let i = 0
+    let step = 0
     prompt.mockImplementation(
       (async (input: Parameters<typeof SessionPrompt.prompt>[0]) => {
-        i++
-        if (i === 1) {
+        step++
+        if (step === 1) {
           return reply({
             sessionID: input.sessionID,
-            parentID: ctx.messageID,
+            parentID: state.ctx.messageID,
             text: "plan",
             structured: {
               topic: "Council v2",
@@ -155,52 +161,58 @@ describe("council.council-run", () => {
             },
           })
         }
-        if (i === 2) {
+        if (step === 2) {
           return reply({
             sessionID: input.sessionID,
-            parentID: ctx.messageID,
+            parentID: state.ctx.messageID,
             text: "architect",
-          structured: {
-            perspective: "Architect",
-            executive_summary: "Code should own the flow.",
-            findings: ["Council should generate artifacts in code."],
-            recommendations: ["Move orchestration into council_run."],
-            tradeoffs: ["More code to maintain."],
-            unknowns: [],
-            confidence: "high",
-          },
-        })
-      }
-        if (i === 3) {
+            structured: {
+              perspective: "Architect",
+              executive_summary: "Code should own the flow.",
+              analysis:
+                "The workflow boundaries should live in code so that planning, consultation, and synthesis are inspectable. The current runtime should preserve structured artifacts while still exposing richer reasoning to the user.",
+              findings: ["Council should generate artifacts in code."],
+              recommendations: ["Move orchestration into council_run."],
+              tradeoffs: ["More code to maintain."],
+              unknowns: ["How much orchestration should stay model-driven?"],
+              confidence: "high",
+            },
+          })
+        }
+        if (step === 3) {
           return reply({
             sessionID: input.sessionID,
-            parentID: ctx.messageID,
+            parentID: state.ctx.messageID,
             text: "pragmatist",
-          structured: {
-            perspective: "Pragmatist",
-            executive_summary: "Ship the smallest useful slice.",
-            findings: ["Council should generate artifacts in code."],
-            recommendations: ["Start with planning, consult, and synthesis."],
-            tradeoffs: ["The first slice will still be iterative."],
-            unknowns: [],
-            confidence: "medium",
-          },
-        })
-      }
+            structured: {
+              perspective: "Pragmatist",
+              executive_summary: "Ship the smallest useful slice.",
+              analysis:
+                "The immediate win is to replace fragile prompt-led behavior with a single dependable runtime entrypoint. Once that works, visibility and report quality can be improved incrementally without reopening the whole architecture.",
+              findings: ["Council should generate artifacts in code."],
+              recommendations: ["Start with planning, consult, and synthesis."],
+              tradeoffs: ["The first slice will still be iterative."],
+              unknowns: [],
+              confidence: "medium",
+            },
+          })
+        }
         return reply({
           sessionID: input.sessionID,
-          parentID: ctx.messageID,
-        text: "synthesis",
-        structured: {
-          recommendation: "Use council_run as the code-owned path.",
-          rationale: ["It removes prompt/runtime drift."],
-          agreements: [],
-          disagreements: [],
-          tradeoffs: [],
-          next_steps: [],
-          open_questions: [],
-        },
-      })
+          parentID: state.ctx.messageID,
+          text: "synthesis",
+          structured: {
+            executive_summary: "",
+            recommendation: "Use council_run as the code-owned path.",
+            decision_log: "",
+            rationale: ["It removes prompt/runtime drift."],
+            agreements: [],
+            disagreements: [],
+            tradeoffs: [],
+            next_steps: [],
+            open_questions: [],
+          },
+        })
       }) as any,
     )
 
@@ -214,11 +226,11 @@ describe("council.council-run", () => {
             context: ["Keep general as the only worker"],
             include_debate: false,
           },
-          ctx,
+          state.ctx,
         ),
     })
 
-    const root = path.join(tmp.path, ".opencode", "council", ctx.sessionID, ctx.messageID)
+    const root = path.join(tmp.path, ".opencode", "council", state.ctx.sessionID, state.ctx.messageID)
     expect(await Bun.file(path.join(root, "request.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "plan.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "paths.json")).exists()).toBe(true)
@@ -226,7 +238,10 @@ describe("council.council-run", () => {
     expect(await Bun.file(path.join(root, "COUNCIL_REPORT.md")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "perspectives", "arch.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "perspectives", "prag.md")).exists()).toBe(true)
+
     expect(result.output).toContain("Council report:")
+    expect(result.output).toContain("Perspectives:")
+    expect(result.output).toContain("- Architect")
     expect(result.output).toContain("Use council_run as the code-owned path.")
     expect(result.metadata.planPath).toBe(path.join(root, "plan.json"))
     expect(result.metadata.synthesisPath).toBe(path.join(root, "synthesis.json"))
@@ -234,31 +249,47 @@ describe("council.council-run", () => {
       path.join(root, "perspectives", "arch.json"),
       path.join(root, "perspectives", "prag.json"),
     ])
+
     const synth = (await Bun.file(path.join(root, "synthesis.json")).json()) as {
+      executive_summary: string
+      decision_log: string
       agreements: string[]
       next_steps: string[]
       tradeoffs: string[]
+      open_questions: string[]
     }
+    expect(synth.executive_summary).toContain("Code should own the flow.")
+    expect(synth.decision_log).toContain("workflow boundaries should live in code")
     expect(synth.agreements).toEqual(["Council should generate artifacts in code."])
     expect(synth.next_steps).toEqual([
       "Move orchestration into council_run.",
       "Start with planning, consult, and synthesis.",
     ])
     expect(synth.tradeoffs).toEqual(["More code to maintain.", "The first slice will still be iterative."])
+    expect(synth.open_questions).toEqual(["How much orchestration should stay model-driven?"])
+
+    const consult = state.calls.findLast((item) => item.metadata?.stage === "consulting")
+    expect(consult?.metadata?.perspectives).toHaveLength(2)
+    expect(consult?.metadata?.perspectives[0].status).toBe("completed")
+    expect(consult?.metadata?.perspectives[0].sessionID).toMatch(/^ses_/)
+    expect(consult?.metadata?.perspectives[0].preview).toContain("Code should own the flow.")
+
+    const done = state.calls.findLast((item) => item.metadata?.stage === "completed")
+    expect(done?.metadata?.perspectives.every((item: { status: string }) => item.status === "completed")).toBe(true)
   })
 
   test("persists structured debate artifacts when debate runs", async () => {
     await using tmp = await tmpdir()
-    const ctx = await setup(tmp.path)
+    const state = await setup(tmp.path)
     const prompt = spyOn(SessionPrompt, "prompt")
-    let i = 0
+    let step = 0
     prompt.mockImplementation(
       (async (input: Parameters<typeof SessionPrompt.prompt>[0]) => {
-        i++
-        if (i === 1) {
+        step++
+        if (step === 1) {
           return reply({
             sessionID: input.sessionID,
-            parentID: ctx.messageID,
+            parentID: state.ctx.messageID,
             text: "plan",
             structured: {
               topic: "API direction",
@@ -285,28 +316,31 @@ describe("council.council-run", () => {
             },
           })
         }
-        if (i === 2 || i === 3) {
+        if (step === 2 || step === 3) {
           return reply({
             sessionID: input.sessionID,
-            parentID: ctx.messageID,
+            parentID: state.ctx.messageID,
             text: "perspective",
             structured: {
-            perspective: i === 2 ? "Architect" : "Pragmatist",
-            executive_summary: "API shape matters.",
-            findings: ["The api contract should be explicit."],
-            recommendations: ["Refine the api before rollout."],
-            tradeoffs: [],
-            unknowns: [],
-            confidence: "medium",
-          },
-        })
-      }
+              perspective: step === 2 ? "Architect" : "Pragmatist",
+              executive_summary: "API shape matters.",
+              analysis: "The API contract should be explicit enough for consumers to understand the generated artifacts.",
+              findings: ["The api contract should be explicit."],
+              recommendations: ["Refine the api before rollout."],
+              tradeoffs: [],
+              unknowns: [],
+              confidence: "medium",
+            },
+          })
+        }
         return reply({
           sessionID: input.sessionID,
-          parentID: ctx.messageID,
+          parentID: state.ctx.messageID,
           text: "synthesis",
           structured: {
+            executive_summary: "",
             recommendation: "Keep debate available for material API conflicts.",
+            decision_log: "",
             rationale: ["The structured debate artifact now carries the key context."],
             agreements: ["Artifacts should be stored."],
             disagreements: ["How often debate should trigger."],
@@ -322,15 +356,15 @@ describe("council.council-run", () => {
       description: "debate",
       parameters: z.object({}),
       execute: async () => {
-        const root = path.join(tmp.path, "debate-source.md")
-        await Bun.write(root, "# Debate")
+        const file = path.join(tmp.path, "debate-source.md")
+        await Bun.write(file, "# Debate")
         return {
           title: "debate",
           metadata: {
             topic: "api",
             perspectives: ["Architect", "Pragmatist"],
             rounds: 1,
-            transcriptPath: root,
+            transcriptPath: file,
             participants: [
               { name: "Architect", position: "Favor stronger contracts." },
               { name: "Pragmatist", position: "Favor smaller steps." },
@@ -359,11 +393,11 @@ describe("council.council-run", () => {
             context: [],
             include_debate: true,
           },
-          ctx,
+          state.ctx,
         ),
     })
 
-    const root = path.join(tmp.path, ".opencode", "council", ctx.sessionID, ctx.messageID)
+    const root = path.join(tmp.path, ".opencode", "council", state.ctx.sessionID, state.ctx.messageID)
     const file = path.join(root, "debates", "api.json")
     expect(await Bun.file(file).exists()).toBe(true)
     const json = (await Bun.file(file).json()) as {
@@ -374,6 +408,10 @@ describe("council.council-run", () => {
     expect(json.rounds[0].responses[0].perspective).toBe("Architect")
     expect(await Bun.file(path.join(root, "debates", "api.md")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "paths.json")).exists()).toBe(true)
+
+    const debateCall = state.calls.findLast((item) => item.metadata?.stage === "debating")
+    expect(debateCall?.metadata?.debates[0].status).toBe("completed")
+    expect(debateCall?.metadata?.debates[0].preview).toContain("Structured debate summary")
 
     debate.mockRestore()
   })

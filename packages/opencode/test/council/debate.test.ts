@@ -31,6 +31,7 @@ describe("council.debate", () => {
         {
           perspective: "Architect",
           executive_summary: "Debate should be a first-class artifact.",
+          analysis: "Debate should produce a durable artifact so the final synthesis can reason over concrete disagreements.",
           findings: ["Debate transcripts should be persisted as structured artifacts."],
           recommendations: ["Add debate normalization before synthesis."],
           tradeoffs: [],
@@ -39,6 +40,7 @@ describe("council.debate", () => {
         {
           perspective: "Pragmatist",
           executive_summary: "Debate should stay targeted.",
+          analysis: "Debate is useful when it resolves a meaningful tension, not when it simply repeats similar advice.",
           findings: ["Debate is only useful when the disagreement is material."],
           recommendations: ["Keep debate optional and focused on material tensions."],
           tradeoffs: [],
@@ -47,6 +49,7 @@ describe("council.debate", () => {
         {
           perspective: "Operator",
           executive_summary: "Confidence is useful later.",
+          analysis: "The system can add more structured metadata later, but the first priority is reliable artifacts and visibility.",
           findings: ["Confidence labels are useful, but they are not the current priority."],
           recommendations: ["Add confidence after the artifacts are stable."],
           tradeoffs: [],

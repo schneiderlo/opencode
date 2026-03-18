@@ -25,7 +25,10 @@ export namespace CouncilReport {
     const sections = [
       `# Council Report: ${input.plan.topic}\n`,
       block("Original Query", [input.query]),
-      block("Executive Summary", [input.plan.summary, "", input.synth.recommendation]),
+      block(
+        "Executive Summary",
+        [input.synth.executive_summary || input.plan.summary, "", input.synth.recommendation].filter(Boolean),
+      ),
       block(
         "Perspectives Consulted",
         input.results.flatMap((item) => [
@@ -43,6 +46,7 @@ export namespace CouncilReport {
         input.results.flatMap((item) => [
           `### ${item.result.perspective}`,
           item.result.executive_summary,
+          ...(item.result.analysis ? ["", item.result.analysis] : []),
           "",
           "Findings:",
           bullets(item.result.findings),
@@ -83,6 +87,7 @@ export namespace CouncilReport {
       block("Areas of Agreement", [bullets(input.synth.agreements)]),
       block("Areas of Disagreement", [bullets(input.synth.disagreements)]),
       block("Recommendation", [input.synth.recommendation, "", "Rationale:", bullets(input.synth.rationale)]),
+      block("Decision Log", [input.synth.decision_log]),
       block("Trade-offs to Consider", [bullets(input.synth.tradeoffs)]),
       block("Next Steps", [bullets(input.synth.next_steps)]),
       block("Open Questions", [bullets(input.synth.open_questions)]),

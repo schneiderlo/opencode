@@ -58,6 +58,7 @@ export namespace CouncilService {
     title: string
     prompt: string
     format: z.ZodType
+    onStart?: (sessionID: string) => void
   }) {
     const agent = await Agent.get("general")
     if (!agent) throw new Error("General agent not found")
@@ -75,6 +76,7 @@ export namespace CouncilService {
         })) ?? []),
       ],
     })
+    input.onStart?.(session.id)
 
     const messageID = MessageID.ascending()
     function cancel() {
@@ -83,7 +85,7 @@ export namespace CouncilService {
     input.ctx.abort.addEventListener("abort", cancel)
     using _ = defer(() => input.ctx.abort.removeEventListener("abort", cancel))
 
-    return await SessionPrompt.prompt({
+    const message = await SessionPrompt.prompt({
       messageID,
       sessionID: session.id,
       model: input.model,
@@ -106,6 +108,10 @@ export namespace CouncilService {
       },
       parts: await SessionPrompt.resolvePromptParts(input.prompt),
     })
+    return {
+      sessionID: session.id,
+      message,
+    }
   }
 
   function planPrompt(input: Input) {
@@ -139,7 +145,8 @@ export namespace CouncilService {
       "",
       `User query:\n${task.user_query}`,
       "",
-      "Answer from this perspective only. Make the findings concrete and non-duplicative.",
+      "Use the analysis field for a detailed, substantive explanation in multiple paragraphs.",
+      "Make the findings concrete and non-duplicative.",
     ].join("\n")
   }
 
@@ -163,6 +170,7 @@ export namespace CouncilService {
       "Debates:",
       JSON.stringify(input.debates, null, 2),
       "",
+      "Produce an executive_summary and decision_log with real detail.",
       "Produce a final recommendation, rationale, agreements, disagreements, tradeoffs, next steps, and open questions.",
     ].join("\n")
   }
@@ -198,7 +206,18 @@ export namespace CouncilService {
   }) {
     return CouncilSchema.Synthesis.parse({
       ...input.synth,
+      executive_summary:
+        input.synth.executive_summary.trim() ||
+        uniq(input.results.map((item) => item.executive_summary)).slice(0, 2).join("\n\n"),
       recommendation: input.synth.recommendation.trim() || input.synth.rationale[0] || "No recommendation captured.",
+      decision_log:
+        input.synth.decision_log.trim() ||
+        [
+          ...uniq(input.results.flatMap((item) => item.analysis ? [item.analysis] : [])),
+          ...uniq(input.debates.map((item) => item.summary)),
+        ]
+          .join("\n\n")
+          .slice(0, 4000),
       agreements: input.synth.agreements.length
         ? uniq(input.synth.agreements)
         : uniq([...recurring(input.results), ...input.debates.flatMap((item) => item.agreements)]),
@@ -258,20 +277,39 @@ export namespace CouncilService {
       prompt: planPrompt(input.input),
       format: CouncilSchema.Plan,
     })
-    const plan = parse(planMsg, CouncilSchema.Plan)
+    const plan = parse(planMsg.message, CouncilSchema.Plan)
     await CouncilArtifact.json(planPath, plan)
 
-    input.ctx.metadata({
-      title: "Council analysis",
-      metadata: {
-        stage: "consulting",
-        dir,
-        perspectives: plan.perspectives.map((item) => item.name),
-      },
-    })
+    const tracker = {
+      perspectives: plan.perspectives.map((item) => ({
+        id: item.id,
+        name: item.name,
+        status: "pending" as "pending" | "running" | "completed" | "error",
+        sessionID: "",
+        preview: "",
+      })),
+      debates: [] as Array<{
+        topic: string
+        status: "pending" | "running" | "completed" | "error"
+        preview: string
+      }>,
+    }
+    const update = (stage: string) =>
+      input.ctx.metadata({
+        title: "Council analysis",
+        metadata: {
+          stage,
+          dir,
+          perspectives: tracker.perspectives,
+          debates: tracker.debates,
+        },
+      })
+
+    update("consulting")
 
     const results = await Promise.all(
-      plan.perspectives.map(async (persona) => {
+      plan.perspectives.map(async (persona, index) => {
+        const state = tracker.perspectives[index]
         const task = CouncilSchema.Task.parse({
           topic: plan.topic,
           summary: plan.summary,
@@ -280,20 +318,32 @@ export namespace CouncilService {
           persona,
           required_sections: [
             "executive_summary",
+            "analysis",
             "findings",
             "recommendations",
             "tradeoffs",
             "unknowns",
+            "confidence",
           ],
         })
-        const msg = await run({
-          ctx: input.ctx,
-          model: base.model,
-          title: `Council: ${persona.name}`,
-          prompt: taskPrompt(task),
-          format: CouncilSchema.Result,
-        })
-        const result = parse(msg, CouncilSchema.Result)
+        state.status = "running"
+        update("consulting")
+        try {
+          const msg = await run({
+            ctx: input.ctx,
+            model: base.model,
+            title: `Council: ${persona.name}`,
+            prompt: taskPrompt(task),
+            format: CouncilSchema.Result,
+            onStart(sessionID) {
+              state.sessionID = sessionID
+              update("consulting")
+            },
+          })
+          const result = parse(msg.message, CouncilSchema.Result)
+          state.status = "completed"
+          state.preview = (result.executive_summary || result.analysis || result.findings[0] || "").slice(0, 220)
+          update("consulting")
         const id = CouncilArtifact.perspective(persona.id || persona.name)
         const json = `${dir}/perspectives/${id}.json`
         const md = `${dir}/perspectives/${id}.md`
@@ -304,6 +354,7 @@ export namespace CouncilService {
             `# ${result.perspective}`,
             "",
             result.executive_summary,
+            ...(result.analysis ? ["", result.analysis] : []),
             "",
             "## Findings",
             result.findings.map((item) => `- ${item}`).join("\n"),
@@ -316,10 +367,17 @@ export namespace CouncilService {
             "",
             "## Unknowns",
             (result.unknowns.length ? result.unknowns : ["None recorded"]).map((item) => `- ${item}`).join("\n"),
+            ...(result.confidence ? ["", `## Confidence`, result.confidence] : []),
             "",
           ].join("\n"),
         )
         return { task, result, json, md }
+        } catch (error: any) {
+          state.status = "error"
+          state.preview = error?.message ?? String(error)
+          update("consulting")
+          throw error
+        }
       }),
     )
     const perspectivePaths = results.map((item) => item.json)
@@ -328,18 +386,19 @@ export namespace CouncilService {
     const pairs = input.input.include_debate
       ? CouncilDebate.select({ plan, results: results.map((item) => item.result) })
       : []
+    tracker.debates = pairs.map((item) => ({
+      topic: item.topic,
+      status: "pending",
+      preview: "",
+    }))
     if (pairs.length) {
-      input.ctx.metadata({
-          title: "Council analysis",
-          metadata: {
-            stage: "debating",
-            dir,
-            debates: pairs.map((item) => item.topic),
-        },
-      })
+      update("debating")
     }
 
-    for (const item of pairs) {
+    for (const [index, item] of pairs.entries()) {
+      const state = tracker.debates[index]
+      state.status = "running"
+      update("debating")
       const tool = await DebateTool.init()
       const out = await tool.execute(
         {
@@ -371,16 +430,13 @@ export namespace CouncilService {
         if (await file.exists()) await Bun.write(md, await file.text())
       }
       debates.push({ ...debate, json, md: await Bun.file(md).exists() ? md : undefined })
+      state.status = "completed"
+      state.preview = debate.summary.slice(0, 220)
+      update("debating")
     }
     const debatePaths = debates.map((item) => item.json)
 
-    input.ctx.metadata({
-      title: "Council analysis",
-      metadata: {
-        stage: "synthesizing",
-        dir,
-      },
-    })
+    update("synthesizing")
 
     const synthMsg = await run({
       ctx: input.ctx,
@@ -394,7 +450,7 @@ export namespace CouncilService {
       }),
       format: CouncilSchema.Synthesis,
     })
-    const synth = parse(synthMsg, CouncilSchema.Synthesis)
+    const synth = parse(synthMsg.message, CouncilSchema.Synthesis)
     const normalized = normalize({
       results: results.map((item) => item.result),
       debates,
@@ -421,6 +477,7 @@ export namespace CouncilService {
       synth: normalized,
     })
     await Bun.write(reportPath, report)
+    update("completed")
 
     return {
       dir,

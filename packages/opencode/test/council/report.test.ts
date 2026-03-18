@@ -47,6 +47,7 @@ describe("council.report", () => {
           result: {
             perspective: "Pragmatist",
             executive_summary: "Ship the smallest code-owned path first.",
+            analysis: "The safest next move is to move orchestration into code while preserving the user's ability to inspect what happened.",
             findings: ["The prompt/runtime mismatch is the immediate problem."],
             recommendations: ["Add a council_run tool before deeper redesign."],
             tradeoffs: ["The first slice will still be iterative."],
@@ -79,7 +80,9 @@ describe("council.report", () => {
         },
       ],
       synth: {
+        executive_summary: "Council should keep its durable structure while restoring visibility and depth.",
         recommendation: "Move Council orchestration into code behind council_run.",
+        decision_log: "The runtime now owns the workflow, but the user still needs better live visibility into each perspective.",
         rationale: ["It removes prompt/runtime drift.", "It gives durable artifacts."],
         agreements: ["Structured outputs should drive synthesis."],
         disagreements: ["Debate should remain optional."],
@@ -96,5 +99,7 @@ describe("council.report", () => {
     expect(text).toContain("## Debate Summary")
     expect(text).toContain("Participants: Pragmatist, Architect")
     expect(text).toContain("Confidence: high")
+    expect(text).toContain("safest next move")
+    expect(text).toContain("## Decision Log")
   })
 })

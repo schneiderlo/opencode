@@ -56,6 +56,7 @@ export namespace CouncilSchema {
     .object({
       perspective: z.string(),
       executive_summary: z.string(),
+      analysis: z.string().default(""),
       findings: z.array(z.string()).min(1),
       recommendations: z.array(z.string()).min(1),
       tradeoffs: z.array(z.string()).default([]),
@@ -84,7 +85,9 @@ export namespace CouncilSchema {
 
   export const Synthesis = z
     .object({
+      executive_summary: z.string().default(""),
       recommendation: z.string(),
+      decision_log: z.string().default(""),
       rationale: z.array(z.string()).min(1),
       agreements: z.array(z.string()).default([]),
       disagreements: z.array(z.string()).default([]),
