@@ -133,13 +133,13 @@ export namespace RunHtml {
   }
 
   function card(title: string, body: string) {
-    return `<section class="card"><div class="card-header"><span class="eyebrow">${text(title)}</span></div><div class="card-body">${body}</div></section>`
+    return `<section class="card"><div class="card-header">${text(title)}</div><div class="card-body">${body}</div></section>`
   }
 
   function shell(input: { title: string; kind: "heavy" | "council"; lead: string; rail: string; body: string }) {
-    // Cyber/Industrial Neo-Brutalist theme
-    const ink = input.kind === "heavy" ? "#ff2a4d" : "#00f0ff" // Radical Red vs Cyan
-    const tint = input.kind === "heavy" ? "rgba(255, 42, 77, 0.15)" : "rgba(0, 240, 255, 0.15)"
+    // Elegant Editorial / Modern Technical Document Theme
+    const accent = input.kind === "heavy" ? "#FF3366" : "#4D4DFF" // Neon Rose vs Electric Indigo
+    const accentBg = input.kind === "heavy" ? "rgba(255, 51, 102, 0.1)" : "rgba(77, 77, 255, 0.1)"
 
     return `<!doctype html>
 <html lang="en">
@@ -149,398 +149,200 @@ export namespace RunHtml {
   <title>${text(input.title)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;700;800&family=Space+Grotesk:wght@300..700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@300;400;500;600&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #09090b;
-      --paper: #121214;
-      --panel: #000000;
-      --ink: #f4f4f5;
-      --muted: #a1a1aa;
-      --line: #27272a;
-      --accent: ${ink};
-      --accent-soft: ${tint};
-      --shadow: 4px 4px 0px var(--accent);
-      --font-display: 'Bebas Neue', sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
-      --font-body: 'Space Grotesk', sans-serif;
+      --bg: #FAFAFA;
+      --fg: #111110;
+      --fg-muted: #666665;
+      --border: #D1D1CD;
+      --accent: ${accent};
+      --accent-bg: ${accentBg};
+      --font-serif: 'Instrument Serif', serif;
+      --font-sans: 'Manrope', sans-serif;
+      --font-mono: 'Space Mono', monospace;
     }
-    
+
+    [data-theme="dark"] {
+      --bg: #0C0C0C;
+      --fg: #F0F0F0;
+      --fg-muted: #888888;
+      --border: #2A2A2A;
+    }
+
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    
+    html { scroll-behavior: smooth; color-scheme: light dark; }
+
     body {
-      margin: 0;
-      color: var(--ink);
-      font-family: var(--font-body);
+      font-family: var(--font-sans);
       background-color: var(--bg);
-      background-image: 
-        linear-gradient(var(--line) 1px, transparent 1px),
-        linear-gradient(90deg, var(--line) 1px, transparent 1px);
-      background-size: 40px 40px;
-      background-position: -1px -1px;
+      color: var(--fg);
+      margin: 0;
+      padding: 0;
       line-height: 1.6;
-      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      transition: background-color 0.3s ease, color 0.3s ease;
     }
 
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background: radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 60%);
-      opacity: 0.5;
-      z-index: -1;
+    .theme-toggle {
+      position: absolute;
+      top: 2rem;
+      right: 2rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      z-index: 100;
     }
 
-    /* Scanline effect */
-    body::after {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background: linear-gradient(
-        to bottom,
-        rgba(255, 255, 255, 0),
-        rgba(255, 255, 255, 0.02) 50%,
-        rgba(0, 0, 0, 0.05) 50%,
-        rgba(0, 0, 0, 0)
-      );
-      background-size: 100% 4px;
-      z-index: 9999;
-      opacity: 0.3;
+    .theme-toggle:hover {
+      background: var(--accent-bg);
+      border-color: var(--accent);
+      color: var(--accent);
     }
 
-    main {
-      max-width: 1600px;
+    .theme-toggle svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    [data-theme="dark"] .sun-icon { display: block; }
+    [data-theme="dark"] .moon-icon { display: none; }
+    [data-theme="light"] .sun-icon { display: none; }
+    [data-theme="light"] .moon-icon { display: block; }
+
+    .container {
+      max-width: 1400px;
       margin: 0 auto;
-      padding: 40px 24px;
+      padding: 2rem 2rem;
     }
 
-    .layout {
+    .masthead {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 2rem;
+      position: relative;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+      background: var(--fg);
+      color: var(--bg);
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      margin-bottom: 1rem;
+    }
+
+    .title {
+      font-family: var(--font-serif);
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      font-weight: 400;
+      line-height: 1;
+      margin: 0 0 1rem 0;
+      letter-spacing: -0.02em;
+      text-wrap: balance;
+    }
+
+    .lead {
+      font-size: 1.25rem;
+      color: var(--fg-muted);
+      max-width: 800px;
+      margin: 0;
+      font-weight: 300;
+      line-height: 1.4;
+      text-wrap: pretty;
+    }
+
+    .grid-layout {
       display: grid;
-      grid-template-columns: 380px minmax(0, 1fr);
-      gap: 32px;
+      grid-template-columns: 320px 1fr;
+      gap: 5rem;
       align-items: start;
     }
 
-    .rail {
-      position: sticky;
-      top: 40px;
+    /* Sidebar */
+    .sidebar {
       display: flex;
       flex-direction: column;
-      gap: 24px;
-      max-height: calc(100vh - 80px);
+      gap: 3rem;
+      position: sticky;
+      top: 4rem;
+      max-height: calc(100vh - 8rem);
       overflow-y: auto;
       scrollbar-width: none;
     }
     
-    .rail::-webkit-scrollbar { display: none; }
-
-    .paper {
-      position: relative;
-      background: var(--paper);
-      border: 2px solid var(--line);
-      padding: 48px clamp(24px, 5vw, 80px);
-      box-shadow: 8px 8px 0px rgba(0,0,0,0.5);
-      animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
-    }
-
-    .paper::before {
-      content: "";
-      position: absolute;
-      top: 0; left: 0; width: 100%; height: 4px;
-      background: var(--accent);
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 6px 12px;
-      font-family: var(--font-mono);
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      background: var(--accent);
-      color: #000;
-      margin-bottom: 24px;
-      box-shadow: 4px 4px 0px rgba(0,0,0,0.8);
-      transform: rotate(-1deg);
-    }
-
-    .cover {
-      background: var(--panel);
-      border: 2px solid var(--line);
-      padding: 32px 24px;
-      position: relative;
-    }
-    
-    .cover::after {
-      content: "SYS.REP";
-      position: absolute;
-      bottom: -10px;
-      right: 16px;
-      background: var(--bg);
-      padding: 0 8px;
-      font-family: var(--font-mono);
-      font-size: 10px;
-      color: var(--muted);
-      border-left: 2px solid var(--line);
-      border-right: 2px solid var(--line);
-    }
-
-    .cover h1 {
-      margin: 0 0 16px;
-      font-family: var(--font-display);
-      font-size: clamp(3rem, 5vw, 4.5rem);
-      line-height: 0.85;
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
-      color: var(--ink);
-      text-shadow: 2px 2px 0px var(--accent);
-    }
-
-    .cover p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 1.1rem;
-      border-left: 2px solid var(--accent);
-      padding-left: 16px;
-    }
+    .sidebar::-webkit-scrollbar { display: none; }
 
     .card {
-      background: var(--panel);
-      border: 2px solid var(--line);
-      position: relative;
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-
-    .card:hover {
-      transform: translate(-2px, -2px);
-      box-shadow: 4px 4px 0px var(--accent);
-      border-color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
     }
 
     .card-header {
-      padding: 12px 16px;
-      border-bottom: 2px solid var(--line);
-      background: rgba(255,255,255,0.02);
-    }
-
-    .card-body {
-      padding: 16px;
-    }
-
-    .eyebrow {
       font-family: var(--font-mono);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.2em;
+      font-size: 0.75rem;
       text-transform: uppercase;
-      color: var(--ink);
+      letter-spacing: 0.1em;
+      color: var(--fg-muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
     }
 
     .statgrid {
       display: grid;
-      gap: 16px;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
     }
 
     .stat {
-      background: var(--panel);
-      border: 2px solid var(--line);
-      padding: 16px;
       display: flex;
       flex-direction: column;
-      position: relative;
-      overflow: hidden;
     }
 
-    .stat::before {
-      content: "";
-      position: absolute;
-      top: 0; left: 0; width: 4px; height: 100%;
-      background: var(--accent);
-    }
-
-    .label {
+    .stat .label {
       font-family: var(--font-mono);
-      font-size: 10px;
+      font-size: 0.7rem;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-      margin-bottom: 8px;
+      color: var(--fg-muted);
+      margin-bottom: 0.25rem;
+      letter-spacing: 0.05em;
     }
 
-    .value {
-      font-family: var(--font-display);
+    .stat .value {
+      font-family: var(--font-serif);
       font-size: 2.5rem;
+      font-weight: 400;
       line-height: 1;
-      color: var(--ink);
+      color: var(--fg);
     }
 
     .chips {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 0.5rem;
     }
 
     .chip {
-      padding: 4px 8px;
-      font-family: var(--font-mono);
-      font-size: 11px;
-      background: var(--accent-soft);
-      color: var(--accent);
-      border: 1px solid var(--accent);
-      text-transform: uppercase;
-    }
-
-    /* Article Typography */
-    .article h1, .article h2, .article h3, .article h4 {
-      font-family: var(--font-display);
-      text-transform: uppercase;
-      margin: 3rem 0 1.5rem;
-      line-height: 0.9;
-      color: var(--ink);
-    }
-
-    .article h1 { font-size: 3.5rem; color: var(--accent); }
-    .article h2 { 
-      font-size: 2.5rem; 
-      padding-bottom: 12px;
-      border-bottom: 2px solid var(--line);
-    }
-    .article h3 { font-size: 1.8rem; }
-    
-    .article p {
-      margin: 0 0 1.5rem;
-      font-size: 1.1rem;
-      color: #d4d4d8;
-    }
-
-    .article strong { 
-      color: #fff;
-      font-weight: 700;
-      background: var(--accent-soft);
-      padding: 0 4px;
-    }
-    
-    .article em {
-      font-style: italic;
-      color: var(--accent);
-    }
-
-    .article ul, .article ol {
-      margin: 0 0 2rem;
-      padding-left: 1.5rem;
-      color: #d4d4d8;
-    }
-
-    .article li {
-      margin-bottom: 0.5rem;
-      padding-left: 0.5rem;
-    }
-
-    .article li::marker {
-      color: var(--accent);
-      font-family: var(--font-mono);
-    }
-
-    .article a {
-      color: var(--accent);
-      text-decoration: none;
-      border-bottom: 1px dashed var(--accent);
-      transition: all 0.2s;
-    }
-
-    .article a:hover {
-      background: var(--accent);
-      color: #000;
-    }
-
-    .article blockquote {
-      margin: 2rem 0;
-      padding: 1.5rem;
-      background: var(--panel);
-      border-left: 4px solid var(--accent);
-      font-style: italic;
-      font-size: 1.2rem;
-      position: relative;
-    }
-
-    .article blockquote::before {
-      content: '"';
-      position: absolute;
-      top: -10px;
-      left: 10px;
-      font-family: var(--font-display);
-      font-size: 4rem;
-      color: var(--line);
-      line-height: 1;
-    }
-
-    .article hr {
-      border: 0;
-      height: 2px;
-      background: repeating-linear-gradient(
-        90deg,
-        var(--line),
-        var(--line) 10px,
-        transparent 10px,
-        transparent 20px
-      );
-      margin: 3rem 0;
-    }
-
-    /* Code Blocks */
-    .article code {
-      font-family: var(--font-mono);
-      font-size: 0.85em;
-      background: var(--panel);
-      padding: 2px 6px;
-      border: 1px solid var(--line);
-      color: var(--accent);
-    }
-
-    .code-block {
-      margin: 2rem 0;
-      border: 2px solid var(--line);
-      background: #000;
-      border-radius: 0;
-      overflow: hidden;
-      box-shadow: 4px 4px 0px rgba(0,0,0,0.5);
-    }
-
-    .code-header {
-      background: var(--panel);
-      padding: 8px 16px;
-      border-bottom: 2px solid var(--line);
-      display: flex;
-      justify-content: flex-end;
-    }
-
-    .code-header .lang {
-      font-family: var(--font-mono);
-      font-size: 10px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
-
-    .article pre.code {
-      margin: 0;
-      padding: 1.5rem;
-      overflow-x: auto;
-    }
-
-    .article pre.code code {
+      font-size: 0.85rem;
+      padding: 0.3rem 0.8rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
       background: transparent;
-      padding: 0;
-      border: none;
-      color: #e0e0e0;
-      font-size: 0.9rem;
+      color: var(--fg);
     }
 
     .links {
@@ -552,63 +354,219 @@ export namespace RunHtml {
     .links a {
       color: var(--accent);
       text-decoration: none;
+      transition: all 0.2s ease;
     }
 
-    .links a:hover {
+    .links a:hover, .links a:focus-visible {
       text-decoration: underline;
+      outline: none;
     }
 
     .path {
       font-family: var(--font-mono);
       font-size: 0.75rem;
-      color: var(--muted);
+      color: var(--fg-muted);
       word-break: break-all;
       margin-top: 12px;
       padding-top: 12px;
-      border-top: 1px solid var(--line);
+      border-top: 1px dashed var(--border);
     }
 
     .summary {
-      font-family: var(--font-mono);
-      font-size: 0.85rem;
-      color: var(--ink);
-      padding: 8px 0;
-      border-bottom: 1px dashed var(--line);
+      font-size: 0.9rem;
+      color: var(--fg);
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border);
+      line-height: 1.4;
     }
     
-    .summary:last-child {
-      border-bottom: none;
+    .summary:last-child { border-bottom: none; padding-bottom: 0; }
+    
+    .summary-num {
+      font-family: var(--font-mono);
+      color: var(--fg-muted);
+      margin-right: 0.5rem;
+      font-size: 0.8rem;
     }
 
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
+    .summary-tag {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      padding: 0.1rem 0.4rem;
+      background: var(--border);
+      border-radius: 4px;
+      margin-left: 0.5rem;
+    }
+
+    /* Content Area */
+    .content {
+      font-size: 1.125rem;
+      max-width: 800px;
+      color: var(--fg);
+    }
+
+    .content h1, .content h2, .content h3, .content h4 {
+      font-family: var(--font-serif);
+      font-weight: 400;
+      margin-top: 3.5rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.1;
+      text-wrap: balance;
+      color: var(--fg);
+    }
+
+    .content h1 { font-size: 3.5rem; }
+    .content h2 { font-size: 2.5rem; }
+    .content h3 { font-size: 1.75rem; }
+
+    .content p {
+      margin-bottom: 1.5rem;
+    }
+
+    .content a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid var(--accent-bg);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .content a:hover, .content a:focus-visible {
+      background-color: var(--accent-bg);
+      border-bottom-color: var(--accent);
+      outline: none;
+    }
+
+    .content ul, .content ol {
+      margin-bottom: 2rem;
+      padding-left: 1.5rem;
+    }
+
+    .content li {
+      margin-bottom: 0.5rem;
+    }
+
+    .content li::marker {
+      color: var(--fg-muted);
+    }
+
+    .content blockquote {
+      margin: 2.5rem 0;
+      padding: 1.5rem 2rem;
+      border-left: 2px solid var(--accent);
+      background: var(--accent-bg);
+      font-style: italic;
+      font-size: 1.25rem;
+      color: var(--fg);
+    }
+
+    .content blockquote p { margin: 0; }
+
+    .content hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 4rem 0;
+    }
+
+    /* Code Blocks */
+    .content code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--border);
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      color: var(--fg);
+    }
+
+    .code-block {
+      margin: 2.5rem 0;
+      background: #111110;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .code-block { background: #1A1A1A; border-color: var(--border); }
+    }
+
+    .code-header {
+      padding: 0.5rem 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .code-header .lang {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #A0A0A0;
+      text-transform: uppercase;
+    }
+
+    .content pre.code {
+      margin: 0;
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+
+    .content pre.code code {
+      background: transparent;
+      padding: 0;
+      color: #E2E2E2;
+      font-size: 0.9rem;
+      border: none;
+    }
+
+    /* Focus States */
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 4px;
+      border-radius: 2px;
     }
 
     @media (max-width: 1024px) {
-      .layout { grid-template-columns: 1fr; }
-      .rail { position: static; max-height: none; }
-      .paper { padding: 32px 24px; }
-      .cover h1 { font-size: 3rem; }
+      .grid-layout { grid-template-columns: 1fr; gap: 3rem; }
+      .sidebar { position: static; max-height: none; }
+      .container { padding: 2rem 1.5rem; }
+      .title { font-size: 3rem; }
+      .masthead { margin-bottom: 2rem; padding-bottom: 2rem; }
     }
   </style>
 </head>
 <body>
-  <main>
-    <div class="layout">
-      <aside class="rail">
-        <div class="cover">
-          <div class="badge">${text(input.kind)}</div>
-          <h1>${text(input.title)}</h1>
-          <p>${text(input.lead)}</p>
-        </div>
+  <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+    <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+    <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+  </button>
+  <div class="container">
+    <header class="masthead">
+      <div class="badge">${text(input.kind)}</div>
+      <h1 class="title">${text(input.title)}</h1>
+      <p class="lead">${text(input.lead)}</p>
+    </header>
+    
+    <main class="grid-layout">
+      <aside class="sidebar">
         ${input.rail}
       </aside>
-      <section class="paper">
-        <article class="article">${input.body}</article>
-      </section>
-    </div>
-  </main>
+      
+      <article class="content">
+        ${input.body}
+      </article>
+    </main>
+  </div>
+  <script>
+    const toggle = document.getElementById('theme-toggle');
+    const html = document.documentElement;
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    html.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    toggle.addEventListener('click', () => {
+      const currentTheme = html.getAttribute('data-theme');
+      html.setAttribute('data-theme', currentTheme === 'dark' ? 'light' : 'dark');
+    });
+  </script>
 </body>
 </html>`
   }
@@ -639,7 +597,7 @@ export namespace RunHtml {
           stat("Key Points", input.synth.key_points.length),
           stat("Next Steps", input.synth.next_steps.length),
         ].join("")}</div>`,
-        card("Answer", `<p>${text(input.synth.answer)}</p>`),
+        card("Answer", `<p style="margin:0;font-size:0.95rem">${text(input.synth.answer)}</p>`),
         card(
           "Key Points",
           `<div class="chips">${input.synth.key_points.map((item) => `<span class="chip">${text(item)}</span>`).join("") || '<span class="chip">None recorded</span>'}</div>`,
@@ -657,7 +615,7 @@ export namespace RunHtml {
           input.plan.tasks
             .map(
               (item, idx) =>
-                `<div class="summary">${text(String(idx + 1).padStart(2, "0"))} // ${text(item.title)} // [${text(item.mode)}]</div>`,
+                `<div class="summary"><span class="summary-num">${text(String(idx + 1).padStart(2, "0"))}</span> ${text(item.title)} <span class="summary-tag">${text(item.mode)}</span></div>`,
             )
             .join(""),
         ),
@@ -693,7 +651,7 @@ export namespace RunHtml {
           stat("Rationale", input.synth.rationale.length),
           stat("Open Questions", input.synth.open_questions.length),
         ].join("")}</div>`,
-        card("Recommendation", `<p>${text(input.synth.recommendation)}</p>`),
+        card("Recommendation", `<p style="margin:0;font-size:0.95rem">${text(input.synth.recommendation)}</p>`),
         card(
           "Rationale",
           `<div class="chips">${input.synth.rationale.map((item) => `<span class="chip">${text(item)}</span>`).join("")}</div>`,
@@ -709,7 +667,7 @@ export namespace RunHtml {
         card(
           "Perspective Index",
           input.plan.perspectives
-            .map((item) => `<div class="summary">[${text(item.name)}] // ${text(item.focus.join(", "))}</div>`)
+            .map((item) => `<div class="summary"><strong style="display:block;margin-bottom:4px">${text(item.name)}</strong><span style="color:var(--fg-muted);font-size:0.85rem">${text(item.focus.join(", "))}</span></div>`)
             .join(""),
         ),
       ].join(""),
