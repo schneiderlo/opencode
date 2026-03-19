@@ -224,14 +224,17 @@ describe("heavy.heavy-run", () => {
     expect(await Bun.file(path.join(root, "paths.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "synthesis.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "HEAVY_REPORT.md")).exists()).toBe(true)
+    expect(await Bun.file(path.join(root, "HEAVY_REPORT.html")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "tasks", "scan.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "tasks", "design.md")).exists()).toBe(true)
 
     expect(result.output).toContain("Heavy report:")
+    expect(result.output).toContain("Visual report:")
     expect(result.output).toContain("Tasks:")
     expect(result.output).toContain("- Scan codebase (explore, direct)")
     expect(result.output).toContain("Use heavy_run as the default decomposition runtime")
     expect(result.metadata.planPath).toBe(path.join(root, "plan.json"))
+    expect(result.metadata.reportHtmlPath).toBe(path.join(root, "HEAVY_REPORT.html"))
     expect(result.metadata.nestedPaths).toEqual([])
     expect(result.metadata.taskPaths).toEqual([
       path.join(root, "tasks", "scan.json"),
@@ -433,6 +436,7 @@ describe("heavy.heavy-run", () => {
     expect(await Bun.file(path.join(nested, "plan.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(nested, "synthesis.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(nested, "HEAVY_REPORT.md")).exists()).toBe(true)
+    expect(await Bun.file(path.join(nested, "HEAVY_REPORT.html")).exists()).toBe(true)
     expect(result.metadata.nestedPaths).toEqual([nested])
     expect(result.output).toContain("Nested runs: 1")
     expect(result.output).toContain("- Architecture (general, heavy)")

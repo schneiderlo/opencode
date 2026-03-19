@@ -63,6 +63,8 @@ export namespace HeavySchema {
       plan: z.string(),
       tasks: z.array(z.string()),
       synthesis: z.string(),
+      report: z.string().optional(),
+      report_html: z.string().optional(),
       nested: z.array(z.string()).default([]),
     })
     .meta({

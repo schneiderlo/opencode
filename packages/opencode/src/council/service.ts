@@ -4,6 +4,7 @@ import { CouncilArtifact } from "./artifact"
 import { CouncilDebate } from "./debate"
 import { CouncilReport } from "./report"
 import { CouncilSchema } from "./schema"
+import { RunHtml } from "../report/html"
 import { defer } from "@/util/defer"
 import { DebateTool } from "../tool/debate"
 import { MessageV2 } from "../session/message-v2"
@@ -268,6 +269,7 @@ export namespace CouncilService {
     const planPath = `${dir}/plan.json`
     const synthesisPath = `${dir}/synthesis.json`
     const reportPath = `${dir}/COUNCIL_REPORT.md`
+    const reportHtmlPath = `${dir}/COUNCIL_REPORT.html`
     await CouncilArtifact.json(requestPath, input.input)
 
     const planMsg = await run({
@@ -466,6 +468,7 @@ export namespace CouncilService {
       debates: debatePaths,
       synthesis: synthesisPath,
       report: reportPath,
+      report_html: reportHtmlPath,
     })
     await CouncilArtifact.json(`${dir}/paths.json`, paths)
 
@@ -477,11 +480,26 @@ export namespace CouncilService {
       synth: normalized,
     })
     await Bun.write(reportPath, report)
+    await Bun.write(
+      reportHtmlPath,
+      RunHtml.council({
+        dir,
+        query: input.input.query,
+        plan,
+        results,
+        debates,
+        synth: normalized,
+        report,
+        reportPath,
+        reportHtmlPath,
+      }),
+    )
     update("completed")
 
     return {
       dir,
       reportPath,
+      reportHtmlPath,
       paths,
       plan,
       tracker,

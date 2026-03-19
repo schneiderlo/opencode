@@ -10,6 +10,8 @@
     "dev:desktop": "bun --cwd packages/desktop tauri dev",
     "dev:web": "bun --cwd packages/app dev",
     "dev:storybook": "bun --cwd packages/storybook storybook",
+    "install:local": "bash ./script/install-local-opencode.sh",
+    "visualize:run": "bun run --cwd packages/opencode visualize",
     "typecheck": "bun turbo typecheck",
     "prepare": "husky",
     "random": "echo 'Random script'",

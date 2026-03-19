@@ -109,6 +109,7 @@ export namespace CouncilSchema {
       debates: z.array(z.string()),
       synthesis: z.string(),
       report: z.string(),
+      report_html: z.string().optional(),
     })
     .meta({
       ref: "CouncilPaths",

@@ -13,6 +13,7 @@ export const CouncilRunTool = Tool.define("council_run", {
 
     const output = [
       `Council report: ${out.reportPath}`,
+      `Visual report: ${out.reportHtmlPath}`,
       `Artifacts: ${out.dir}`,
       "",
       "Perspectives:",
@@ -37,6 +38,7 @@ export const CouncilRunTool = Tool.define("council_run", {
         stage: "completed",
         dir: out.dir,
         reportPath: out.reportPath,
+        reportHtmlPath: out.reportHtmlPath,
         artifactDir: out.dir,
         planPath: out.paths.plan,
         perspectivePaths: out.paths.perspectives,

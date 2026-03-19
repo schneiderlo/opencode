@@ -1,7 +1,8 @@
-import { createMemo, For, Show, Switch, Match } from "solid-js"
+import { createEffect, createMemo, For, Show, Switch, Match } from "solid-js"
 import { useRoute } from "@tui/context/route"
 import { useTheme } from "@tui/context/theme"
 import { useKeybind } from "@tui/context/keybind"
+import { useSync } from "@tui/context/sync"
 import { Locale } from "@/util/locale"
 import type { CouncilRunTool } from "@/tool/council_run"
 import { type ToolProps, BlockTool, InlineTool } from "./index"
@@ -10,6 +11,7 @@ export function CouncilRun(props: ToolProps<typeof CouncilRunTool>) {
   const { theme } = useTheme()
   const { navigate } = useRoute()
   const keybind = useKeybind()
+  const sync = useSync()
 
   const stage = createMemo(() => {
     const value = props.metadata.stage
@@ -35,6 +37,35 @@ export function CouncilRun(props: ToolProps<typeof CouncilRunTool>) {
       ]
     })
   })
+
+  createEffect(() => {
+    for (const item of rows()) {
+      if (!item.sessionID) continue
+      if (sync.data.message[item.sessionID]?.length) continue
+      sync.session.sync(item.sessionID).catch(() => {})
+    }
+  })
+
+  function current(sessionID: string) {
+    const messages = sync.data.message[sessionID] ?? []
+    const tools = messages.flatMap((msg) =>
+      (sync.data.part[msg.id] ?? [])
+        .filter((part): part is typeof props.part => part.type === "tool")
+        .map((part) => ({
+          tool: part.tool,
+          title:
+            typeof (part.state as Record<string, unknown> | undefined)?.title === "string"
+              ? ((part.state as Record<string, unknown>).title as string)
+              : "",
+        })),
+    )
+    const last = tools.findLast((item) => item.title)
+    return {
+      title: sync.session.get(sessionID)?.title ?? "",
+      status: sync.session.status(sessionID),
+      current: last ? `${Locale.titlecase(last.tool)} ${last.title}` : "",
+    }
+  }
 
   const debates = createMemo(() => {
     const value = Array.isArray(props.metadata.debates) ? props.metadata.debates : []
@@ -116,6 +147,16 @@ export function CouncilRun(props: ToolProps<typeof CouncilRunTool>) {
                         {item.preview}
                       </text>
                     </Show>
+                    <Show when={item.sessionID && current(item.sessionID).title}>
+                      <text paddingLeft={6} style={{ fg: theme.textMuted }}>
+                        Session: {current(item.sessionID).title}
+                      </text>
+                    </Show>
+                    <Show when={item.sessionID && current(item.sessionID).current}>
+                      <text paddingLeft={6} style={{ fg: theme.textMuted }}>
+                        Current: {current(item.sessionID).current}
+                      </text>
+                    </Show>
                   </box>
                 )
               }}
@@ -161,7 +202,7 @@ export function CouncilRun(props: ToolProps<typeof CouncilRunTool>) {
             <Show when={rows().some((item) => !!item.sessionID)}>
               <box marginTop={1} flexDirection="row" gap={1}>
                 <text style={{ fg: theme.text }}>
-                  {keybind.print("session_child_cycle")}
+                  {keybind.print("session_child_first")}
                   <span style={{ fg: theme.textMuted }}> view subagents</span>
                 </text>
                 <text style={{ fg: theme.textMuted }}>(or click to navigate)</text>

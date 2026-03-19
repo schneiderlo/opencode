@@ -236,14 +236,17 @@ describe("council.council-run", () => {
     expect(await Bun.file(path.join(root, "paths.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "synthesis.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "COUNCIL_REPORT.md")).exists()).toBe(true)
+    expect(await Bun.file(path.join(root, "COUNCIL_REPORT.html")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "perspectives", "arch.json")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "perspectives", "prag.md")).exists()).toBe(true)
 
     expect(result.output).toContain("Council report:")
+    expect(result.output).toContain("Visual report:")
     expect(result.output).toContain("Perspectives:")
     expect(result.output).toContain("- Architect")
     expect(result.output).toContain("Use council_run as the code-owned path.")
     expect(result.metadata.planPath).toBe(path.join(root, "plan.json"))
+    expect(result.metadata.reportHtmlPath).toBe(path.join(root, "COUNCIL_REPORT.html"))
     expect(result.metadata.synthesisPath).toBe(path.join(root, "synthesis.json"))
     expect(result.metadata.perspectivePaths).toEqual([
       path.join(root, "perspectives", "arch.json"),

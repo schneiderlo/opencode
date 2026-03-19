@@ -8,6 +8,7 @@ import type { Tool } from "../tool/tool"
 import { HeavyArtifact } from "./artifact"
 import { HeavyReport } from "./report"
 import { HeavySchema } from "./schema"
+import { RunHtml } from "../report/html"
 import { defer } from "@/util/defer"
 import z from "zod"
 
@@ -42,6 +43,7 @@ type Task = {
 type Run = {
   dir: string
   reportPath: string
+  reportHtmlPath: string
   paths: HeavySchema.Paths
   plan: HeavySchema.Plan
   states: State[]
@@ -406,6 +408,7 @@ export namespace HeavyService {
     const planPath = `${input.dir}/plan.json`
     const synthesisPath = `${input.dir}/synthesis.json`
     const reportPath = `${input.dir}/HEAVY_REPORT.md`
+    const reportHtmlPath = `${input.dir}/HEAVY_REPORT.html`
     await HeavyArtifact.json(requestPath, input.input)
 
     update({
@@ -524,6 +527,8 @@ export namespace HeavyService {
       plan: planPath,
       tasks: tasks.map((item) => item.json),
       synthesis: synthesisPath,
+      report: reportPath,
+      report_html: reportHtmlPath,
       nested: tasks.flatMap((item) => (item.result.nested ? [item.result.nested.dir] : [])),
     })
     await HeavyArtifact.json(`${input.dir}/paths.json`, paths)
@@ -535,6 +540,24 @@ export namespace HeavyService {
         plan,
         tasks,
         synth,
+      }),
+    )
+    await Bun.write(
+      reportHtmlPath,
+      RunHtml.heavy({
+        dir: input.dir,
+        query: input.input.query,
+        plan,
+        tasks,
+        synth,
+        report: HeavyReport.render({
+          query: input.input.query,
+          plan,
+          tasks,
+          synth,
+        }),
+        reportPath,
+        reportHtmlPath,
       }),
     )
 
@@ -549,6 +572,7 @@ export namespace HeavyService {
     return {
       dir: input.dir,
       reportPath,
+      reportHtmlPath,
       paths,
       plan,
       states,

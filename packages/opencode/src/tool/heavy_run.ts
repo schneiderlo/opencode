@@ -13,6 +13,7 @@ export const HeavyRunTool = Tool.define("heavy_run", {
 
     const output = [
       `Heavy report: ${out.reportPath}`,
+      `Visual report: ${out.reportHtmlPath}`,
       `Artifacts: ${out.dir}`,
       `Nested runs: ${out.paths.nested.length}`,
       "",
@@ -36,6 +37,7 @@ export const HeavyRunTool = Tool.define("heavy_run", {
         dir: out.dir,
         depth: input.depth,
         reportPath: out.reportPath,
+        reportHtmlPath: out.reportHtmlPath,
         artifactDir: out.dir,
         planPath: out.paths.plan,
         taskPaths: out.paths.tasks,
