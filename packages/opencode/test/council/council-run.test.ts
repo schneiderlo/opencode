@@ -249,6 +249,11 @@ describe("council.council-run", () => {
       path.join(root, "perspectives", "arch.json"),
       path.join(root, "perspectives", "prag.json"),
     ])
+    expect(result.metadata.stage).toBe("completed")
+    expect(result.metadata.perspectives).toHaveLength(2)
+    expect(result.metadata.perspectives[0].sessionID).toMatch(/^ses_/)
+    expect(result.metadata.perspectives[0].status).toBe("completed")
+    expect(result.metadata.perspectiveNames).toEqual(["Architect", "Pragmatist"])
 
     const synth = (await Bun.file(path.join(root, "synthesis.json")).json()) as {
       executive_summary: string
@@ -384,7 +389,7 @@ describe("council.council-run", () => {
     } as never)
 
     const tool = await CouncilRunTool.init()
-    await Instance.provide({
+    const result = await Instance.provide({
       directory: tmp.path,
       fn: () =>
         tool.execute(
@@ -412,6 +417,8 @@ describe("council.council-run", () => {
     const debateCall = state.calls.findLast((item) => item.metadata?.stage === "debating")
     expect(debateCall?.metadata?.debates[0].status).toBe("completed")
     expect(debateCall?.metadata?.debates[0].preview).toContain("Structured debate summary")
+    expect(result.metadata.debates[0].status).toBe("completed")
+    expect(result.metadata.debateTopics).toEqual(["api"])
 
     debate.mockRestore()
   })

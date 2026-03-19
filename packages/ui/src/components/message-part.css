@@ -360,6 +360,69 @@
   }
 }
 
+[data-component="tool-output"][data-component-variant="council"] {
+  white-space: normal;
+  width: 100%;
+  gap: 16px;
+
+  [data-component="council-tool-group"] {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  [data-component="council-tool-row"] {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  [data-slot="council-tool-heading"] {
+    font-size: 12px;
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-small);
+    letter-spacing: var(--letter-spacing-wide);
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  [data-slot="council-tool-main"] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-base);
+  }
+
+  [data-slot="council-tool-status"] {
+    font-size: 12px;
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-small);
+    color: var(--text-muted);
+    text-transform: capitalize;
+  }
+
+  [data-slot="council-tool-status"][data-status="running"] {
+    color: var(--yellow-700);
+  }
+
+  [data-slot="council-tool-status"][data-status="completed"] {
+    color: var(--green-700);
+  }
+
+  [data-slot="council-tool-status"][data-status="error"] {
+    color: var(--red-700);
+  }
+
+  [data-slot="council-tool-preview"] {
+    font-size: 13px;
+    line-height: var(--line-height-large);
+    color: var(--text-weak);
+  }
+}
+
 [data-component="bash-output"] {
   width: 100%;
   border: 1px solid var(--border-weak-base);

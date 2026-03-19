@@ -34,14 +34,18 @@ export const CouncilRunTool = Tool.define("council_run", {
     return {
       title: "Council analysis complete",
       metadata: {
+        stage: "completed",
+        dir: out.dir,
         reportPath: out.reportPath,
         artifactDir: out.dir,
         planPath: out.paths.plan,
         perspectivePaths: out.paths.perspectives,
         debatePaths: out.paths.debates,
         synthesisPath: out.paths.synthesis,
-        perspectives: out.plan.perspectives.map((item) => item.name),
-        debates: out.debates.map((item) => item.topic),
+        perspectives: out.tracker.perspectives,
+        debates: out.tracker.debates,
+        perspectiveNames: out.plan.perspectives.map((item) => item.name),
+        debateTopics: out.debates.map((item) => item.topic),
       },
       output,
     }

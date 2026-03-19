@@ -484,6 +484,7 @@ export namespace CouncilService {
       reportPath,
       paths,
       plan,
+      tracker,
       results,
       debates,
       synth: normalized,

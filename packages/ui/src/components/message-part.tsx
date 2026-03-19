@@ -1692,6 +1692,140 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "council_run",
+  render(props) {
+    const data = useData()
+    const location = useLocation()
+    const running = createMemo(() => props.status === "pending" || props.status === "running")
+    const stage = createMemo(() => {
+      const value = props.metadata.stage
+      if (typeof value === "string" && value) return value
+      if (props.status === "completed") return "completed"
+      return "planning"
+    })
+    const perspectives = createMemo(() => {
+      const value = Array.isArray(props.metadata.perspectives) ? props.metadata.perspectives : []
+      return value.flatMap((item) => {
+        if (!item || typeof item !== "object") return []
+        const name = typeof item.name === "string" ? item.name : ""
+        if (!name) return []
+        return [
+          {
+            name,
+            status:
+              item.status === "running" || item.status === "completed" || item.status === "error"
+                ? item.status
+                : "pending",
+            sessionID: typeof item.sessionID === "string" ? item.sessionID : "",
+            preview: typeof item.preview === "string" ? item.preview : "",
+          },
+        ]
+      })
+    })
+    const debates = createMemo(() => {
+      const value = Array.isArray(props.metadata.debates) ? props.metadata.debates : []
+      return value.flatMap((item) => {
+        if (!item || typeof item !== "object") return []
+        const topic = typeof item.topic === "string" ? item.topic : ""
+        if (!topic) return []
+        return [
+          {
+            topic,
+            status:
+              item.status === "running" || item.status === "completed" || item.status === "error"
+                ? item.status
+                : "pending",
+            preview: typeof item.preview === "string" ? item.preview : "",
+          },
+        ]
+      })
+    })
+    const note = createMemo(() => {
+      if (stage() === "planning") return "Planning"
+      if (stage() === "consulting") return "Consulting perspectives"
+      if (stage() === "debating") return "Running debates"
+      if (stage() === "synthesizing") return "Synthesizing recommendation"
+      return "Completed"
+    })
+
+    return (
+      <BasicTool
+        icon="task"
+        status={props.status}
+        forceOpen={running()}
+        trigger={{
+          title: "Council analysis",
+          subtitle: note(),
+          args: [
+            `${perspectives().length} perspective${perspectives().length === 1 ? "" : "s"}`,
+            ...(debates().length ? [`${debates().length} debate${debates().length === 1 ? "" : "s"}`] : []),
+          ],
+        }}
+      >
+        <div data-component="tool-output" data-component-variant="council">
+          <Show when={perspectives().length === 0 && debates().length === 0}>
+            <div data-slot="council-tool-preview">{note()}</div>
+          </Show>
+          <Show when={perspectives().length > 0}>
+            <div data-component="council-tool-group">
+              <div data-slot="council-tool-heading">Perspectives</div>
+              <For each={perspectives()}>
+                {(item) => {
+                  const href = createMemo(() => sessionLink(item.sessionID, location.pathname, data.sessionHref))
+                  return (
+                    <div data-component="council-tool-row">
+                      <div data-slot="council-tool-main">
+                        <span data-slot="council-tool-status" data-status={item.status}>
+                          {item.status}
+                        </span>
+                        <Switch>
+                          <Match when={href()}>
+                            <a class="clickable subagent-link" href={href()!} onClick={(e) => e.stopPropagation()}>
+                              {item.name}
+                            </a>
+                          </Match>
+                          <Match when={true}>
+                            <span>{item.name}</span>
+                          </Match>
+                        </Switch>
+                      </div>
+                      <Show when={item.preview}>
+                        <div data-slot="council-tool-preview">{item.preview}</div>
+                      </Show>
+                    </div>
+                  )
+                }}
+              </For>
+            </div>
+          </Show>
+
+          <Show when={debates().length > 0}>
+            <div data-component="council-tool-group">
+              <div data-slot="council-tool-heading">Debates</div>
+              <For each={debates()}>
+                {(item) => (
+                  <div data-component="council-tool-row">
+                    <div data-slot="council-tool-main">
+                      <span data-slot="council-tool-status" data-status={item.status}>
+                        {item.status}
+                      </span>
+                      <span>{item.topic}</span>
+                    </div>
+                    <Show when={item.preview}>
+                      <div data-slot="council-tool-preview">{item.preview}</div>
+                    </Show>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "bash",
   render(props) {
     const i18n = useI18n()
