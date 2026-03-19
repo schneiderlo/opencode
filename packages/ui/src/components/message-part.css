@@ -360,11 +360,13 @@
   }
 }
 
-[data-component="tool-output"][data-component-variant="council"] {
+[data-component="tool-output"][data-component-variant="council"],
+[data-component="tool-output"][data-component-variant="heavy"] {
   white-space: normal;
   width: 100%;
   gap: 16px;
 
+  [data-component="analysis-tool-group"],
   [data-component="council-tool-group"] {
     width: 100%;
     display: flex;
@@ -372,6 +374,7 @@
     gap: 8px;
   }
 
+  [data-component="analysis-tool-row"],
   [data-component="council-tool-row"] {
     width: 100%;
     display: flex;
@@ -379,6 +382,7 @@
     gap: 4px;
   }
 
+  [data-slot="analysis-tool-heading"],
   [data-slot="council-tool-heading"] {
     font-size: 12px;
     font-weight: var(--font-weight-medium);
@@ -388,6 +392,7 @@
     text-transform: uppercase;
   }
 
+  [data-slot="analysis-tool-main"],
   [data-slot="council-tool-main"] {
     display: flex;
     flex-wrap: wrap;
@@ -396,6 +401,7 @@
     color: var(--text-base);
   }
 
+  [data-slot="analysis-tool-status"],
   [data-slot="council-tool-status"] {
     font-size: 12px;
     font-weight: var(--font-weight-medium);
@@ -404,18 +410,26 @@
     text-transform: capitalize;
   }
 
+  [data-slot="analysis-tool-status"][data-status="running"],
   [data-slot="council-tool-status"][data-status="running"] {
     color: var(--yellow-700);
   }
 
+  [data-slot="analysis-tool-status"][data-status="completed"],
   [data-slot="council-tool-status"][data-status="completed"] {
     color: var(--green-700);
   }
 
+  [data-slot="analysis-tool-status"][data-status="error"],
   [data-slot="council-tool-status"][data-status="error"] {
     color: var(--red-700);
   }
 
+  [data-slot="analysis-tool-meta"] {
+    color: var(--text-muted);
+  }
+
+  [data-slot="analysis-tool-preview"],
   [data-slot="council-tool-preview"] {
     font-size: 13px;
     line-height: var(--line-height-large);

@@ -1826,6 +1826,106 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "heavy_run",
+  render(props) {
+    const data = useData()
+    const location = useLocation()
+    const running = createMemo(() => props.status === "pending" || props.status === "running")
+    const stage = createMemo(() => {
+      const value = props.metadata.stage
+      if (typeof value === "string" && value) return value
+      if (props.status === "completed") return "completed"
+      return "planning"
+    })
+    const rows = createMemo(() => {
+      const value = Array.isArray(props.metadata.tasks) ? props.metadata.tasks : []
+      return value.flatMap((item) => {
+        if (!item || typeof item !== "object") return []
+        const title = typeof item.title === "string" ? item.title : ""
+        if (!title) return []
+        return [
+          {
+            title,
+            mode: item.mode === "heavy" ? "heavy" : "direct",
+            agent: item.agent === "explore" ? "explore" : "general",
+            status:
+              item.status === "running" || item.status === "completed" || item.status === "error"
+                ? item.status
+                : "pending",
+            sessionID: typeof item.sessionID === "string" ? item.sessionID : "",
+            preview: typeof item.preview === "string" ? item.preview : "",
+            reportPath: typeof item.reportPath === "string" ? item.reportPath : "",
+          },
+        ]
+      })
+    })
+    const note = createMemo(() => {
+      if (stage() === "planning") return "Planning"
+      if (stage() === "executing") return "Executing tasks"
+      if (stage() === "synthesizing") return "Synthesizing answer"
+      return "Completed"
+    })
+
+    return (
+      <BasicTool
+        icon="task"
+        status={props.status}
+        forceOpen={running()}
+        trigger={{
+          title: "Heavy analysis",
+          subtitle: note(),
+          args: [`${rows().length} task${rows().length === 1 ? "" : "s"}`],
+        }}
+      >
+        <div data-component="tool-output" data-component-variant="heavy">
+          <Show when={rows().length === 0}>
+            <div data-slot="analysis-tool-preview">{note()}</div>
+          </Show>
+          <Show when={rows().length > 0}>
+            <div data-component="analysis-tool-group">
+              <div data-slot="analysis-tool-heading">Tasks</div>
+              <For each={rows()}>
+                {(item) => {
+                  const href = createMemo(() => sessionLink(item.sessionID, location.pathname, data.sessionHref))
+                  return (
+                    <div data-component="analysis-tool-row">
+                      <div data-slot="analysis-tool-main">
+                        <span data-slot="analysis-tool-status" data-status={item.status}>
+                          {item.status}
+                        </span>
+                        <Switch>
+                          <Match when={href()}>
+                            <a class="clickable subagent-link" href={href()!} onClick={(e) => e.stopPropagation()}>
+                              {item.title}
+                            </a>
+                          </Match>
+                          <Match when={true}>
+                            <span>{item.title}</span>
+                          </Match>
+                        </Switch>
+                        <span data-slot="analysis-tool-meta">
+                          ({item.agent}, {item.mode})
+                        </span>
+                      </div>
+                      <Show when={item.preview}>
+                        <div data-slot="analysis-tool-preview">{item.preview}</div>
+                      </Show>
+                      <Show when={item.reportPath}>
+                        <div data-slot="analysis-tool-preview">Nested report: {item.reportPath}</div>
+                      </Show>
+                    </div>
+                  )
+                }}
+              </For>
+            </div>
+          </Show>
+        </div>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "bash",
   render(props) {
     const i18n = useI18n()

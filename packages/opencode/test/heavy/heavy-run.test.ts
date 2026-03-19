@@ -237,6 +237,15 @@ describe("heavy.heavy-run", () => {
       path.join(root, "tasks", "scan.json"),
       path.join(root, "tasks", "design.json"),
     ])
+    expect(result.metadata.stage).toBe("completed")
+    expect(result.metadata.depth).toBe(0)
+    expect(result.metadata.tasks).toHaveLength(2)
+    expect(result.metadata.tasks[0].sessionID).toMatch(/^ses_/)
+    expect(result.metadata.tasks[0].status).toBe("completed")
+    expect(result.metadata.taskPlan).toEqual([
+      { title: "Scan codebase", agent: "explore", mode: "direct" },
+      { title: "Design runtime", agent: "general", mode: "direct" },
+    ])
 
     const synth = (await Bun.file(path.join(root, "synthesis.json")).json()) as {
       summary: string
@@ -447,5 +456,6 @@ describe("heavy.heavy-run", () => {
     const exec = state.calls.findLast((item) => item.metadata?.dir === root && item.metadata?.stage === "executing")
     expect(exec?.metadata?.tasks[1].mode).toBe("heavy")
     expect(exec?.metadata?.tasks[1].reportPath).toBe(path.join(nested, "HEAVY_REPORT.md"))
+    expect(result.metadata.tasks[1].reportPath).toBe(path.join(nested, "HEAVY_REPORT.md"))
   })
 })

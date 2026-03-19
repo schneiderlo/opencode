@@ -32,13 +32,17 @@ export const HeavyRunTool = Tool.define("heavy_run", {
     return {
       title: "Heavy analysis complete",
       metadata: {
+        stage: "completed",
+        dir: out.dir,
+        depth: input.depth,
         reportPath: out.reportPath,
         artifactDir: out.dir,
         planPath: out.paths.plan,
         taskPaths: out.paths.tasks,
         nestedPaths: out.paths.nested,
         synthesisPath: out.paths.synthesis,
-        tasks: out.plan.tasks.map((item) => ({ title: item.title, agent: item.agent, mode: item.mode })),
+        tasks: out.states,
+        taskPlan: out.plan.tasks.map((item) => ({ title: item.title, agent: item.agent, mode: item.mode })),
       },
       output,
     }

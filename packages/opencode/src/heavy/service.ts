@@ -44,6 +44,7 @@ type Run = {
   reportPath: string
   paths: HeavySchema.Paths
   plan: HeavySchema.Plan
+  states: State[]
   tasks: Task[]
   synth: HeavySchema.Synthesis
 }
@@ -550,6 +551,7 @@ export namespace HeavyService {
       reportPath,
       paths,
       plan,
+      states,
       tasks,
       synth,
     }

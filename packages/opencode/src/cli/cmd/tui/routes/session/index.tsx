@@ -53,6 +53,7 @@ import type { DialogContext } from "@tui/ui/dialog"
 import { useKeybind } from "@tui/context/keybind"
 import { MapReduce } from "./tool-map-reduce"
 import { CouncilRun } from "./tool-council-run"
+import { HeavyRun } from "./tool-heavy-run"
 import { Header } from "./header"
 import { parsePatch } from "diff"
 import { useDialog } from "../../ui/dialog"
@@ -1575,6 +1576,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         </Match>
         <Match when={props.part.tool === "council_run"}>
           <CouncilRun {...toolprops} />
+        </Match>
+        <Match when={props.part.tool === "heavy_run"}>
+          <HeavyRun {...toolprops} />
         </Match>
         <Match when={true}>
           <GenericTool {...toolprops} />
