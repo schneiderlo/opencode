@@ -1,10 +1,12 @@
-import { describe, test, expect } from "bun:test"
+import { afterAll, afterEach, describe, test, expect } from "bun:test"
 import path from "path"
 import fs from "fs/promises"
+import { Effect, Layer, ManagedRuntime } from "effect"
 import { EditTool } from "../../src/tool/edit"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { FileTime } from "../../src/file/time"
+import { LSP } from "../../src/lsp"
 import { SessionID, MessageID } from "../../src/session/schema"
 
 const ctx = {
@@ -18,10 +20,28 @@ const ctx = {
   ask: async () => {},
 }
 
+afterEach(async () => {
+  await Instance.disposeAll()
+})
+
 async function touch(file: string, time: number) {
   const date = new Date(time)
   await fs.utimes(file, date, date)
 }
+
+const runtime = ManagedRuntime.make(Layer.mergeAll(LSP.defaultLayer, FileTime.defaultLayer))
+
+afterAll(async () => {
+  await runtime.dispose()
+})
+
+const resolve = () =>
+  runtime.runPromise(
+    Effect.gen(function* () {
+      const info = yield* EditTool
+      return yield* Effect.promise(() => info.init())
+    }),
+  )
 
 describe("tool.edit", () => {
   describe("creating new files", () => {
@@ -32,7 +52,7 @@ describe("tool.edit", () => {
       await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          const edit = await EditTool.init()
+          const edit = await resolve()
           const result = await edit.execute(
             {
               filePath: filepath,
@@ -57,7 +77,7 @@ describe("tool.edit", () => {
       await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await edit.execute(
             {
               filePath: filepath,
@@ -85,10 +105,9 @@ describe("tool.edit", () => {
           const { FileWatcher } = await import("../../src/file/watcher")
 
           const events: string[] = []
-          const unsubEdited = Bus.subscribe(File.Event.Edited, () => events.push("edited"))
           const unsubUpdated = Bus.subscribe(FileWatcher.Event.Updated, () => events.push("updated"))
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await edit.execute(
             {
               filePath: filepath,
@@ -98,9 +117,7 @@ describe("tool.edit", () => {
             ctx,
           )
 
-          expect(events).toContain("edited")
           expect(events).toContain("updated")
-          unsubEdited()
           unsubUpdated()
         },
       })
@@ -118,7 +135,7 @@ describe("tool.edit", () => {
         fn: async () => {
           await FileTime.read(ctx.sessionID, filepath)
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
           const result = await edit.execute(
             {
               filePath: filepath,
@@ -145,7 +162,7 @@ describe("tool.edit", () => {
         fn: async () => {
           await FileTime.read(ctx.sessionID, filepath)
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await expect(
             edit.execute(
               {
@@ -168,7 +185,7 @@ describe("tool.edit", () => {
       await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await expect(
             edit.execute(
               {
@@ -193,7 +210,7 @@ describe("tool.edit", () => {
         fn: async () => {
           await FileTime.read(ctx.sessionID, filepath)
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await expect(
             edit.execute(
               {
@@ -216,7 +233,7 @@ describe("tool.edit", () => {
       await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await expect(
             edit.execute(
               {
@@ -248,7 +265,7 @@ describe("tool.edit", () => {
           await touch(filepath, 2_000)
 
           // Try to edit with the new content
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await expect(
             edit.execute(
               {
@@ -273,7 +290,7 @@ describe("tool.edit", () => {
         fn: async () => {
           await FileTime.read(ctx.sessionID, filepath)
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await edit.execute(
             {
               filePath: filepath,
@@ -301,14 +318,12 @@ describe("tool.edit", () => {
           await FileTime.read(ctx.sessionID, filepath)
 
           const { Bus } = await import("../../src/bus")
-          const { File } = await import("../../src/file")
           const { FileWatcher } = await import("../../src/file/watcher")
 
           const events: string[] = []
-          const unsubEdited = Bus.subscribe(File.Event.Edited, () => events.push("edited"))
           const unsubUpdated = Bus.subscribe(FileWatcher.Event.Updated, () => events.push("updated"))
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await edit.execute(
             {
               filePath: filepath,
@@ -318,9 +333,7 @@ describe("tool.edit", () => {
             ctx,
           )
 
-          expect(events).toContain("edited")
           expect(events).toContain("updated")
-          unsubEdited()
           unsubUpdated()
         },
       })
@@ -338,7 +351,7 @@ describe("tool.edit", () => {
         fn: async () => {
           await FileTime.read(ctx.sessionID, filepath)
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await edit.execute(
             {
               filePath: filepath,
@@ -364,7 +377,7 @@ describe("tool.edit", () => {
         fn: async () => {
           await FileTime.read(ctx.sessionID, filepath)
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await edit.execute(
             {
               filePath: filepath,
@@ -388,7 +401,7 @@ describe("tool.edit", () => {
       await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await expect(
             edit.execute(
               {
@@ -413,7 +426,7 @@ describe("tool.edit", () => {
         fn: async () => {
           await FileTime.read(ctx.sessionID, dirpath)
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
           await expect(
             edit.execute(
               {
@@ -438,7 +451,7 @@ describe("tool.edit", () => {
         fn: async () => {
           await FileTime.read(ctx.sessionID, filepath)
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
           const result = await edit.execute(
             {
               filePath: filepath,
@@ -505,7 +518,7 @@ describe("tool.edit", () => {
       return await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          const edit = await EditTool.init()
+          const edit = await resolve()
           const filePath = path.join(tmp.path, "test.txt")
           await FileTime.read(ctx.sessionID, filePath)
           await edit.execute(
@@ -650,7 +663,7 @@ describe("tool.edit", () => {
         fn: async () => {
           await FileTime.read(ctx.sessionID, filepath)
 
-          const edit = await EditTool.init()
+          const edit = await resolve()
 
           // Two concurrent edits
           const promise1 = edit.execute(

@@ -1,9 +1,13 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import path from "path"
 import fs from "fs/promises"
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"
 import { ToolRegistry } from "../../src/tool/registry"
+
+afterEach(async () => {
+  await Instance.disposeAll()
+})
 
 describe("tool.registry", () => {
   test("registers built-in council tools", async () => {
@@ -111,6 +115,37 @@ describe("tool.registry", () => {
         await Bun.write(
           path.join(opencodeDir, "node_modules", "cowsay", "index.js"),
           ["export const say = ({ text }) => ` ${text} `", ""].join("\n"),
+        )
+
+        await Bun.write(
+          path.join(opencodeDir, "package-lock.json"),
+          JSON.stringify({
+            name: "custom-tools",
+            lockfileVersion: 3,
+            packages: {
+              "": {
+                dependencies: {
+                  "@opencode-ai/plugin": "^0.0.0",
+                  cowsay: "^1.6.0",
+                },
+              },
+            },
+          }),
+        )
+
+        const cowsayDir = path.join(opencodeDir, "node_modules", "cowsay")
+        await fs.mkdir(cowsayDir, { recursive: true })
+        await Bun.write(
+          path.join(cowsayDir, "package.json"),
+          JSON.stringify({
+            name: "cowsay",
+            type: "module",
+            exports: "./index.js",
+          }),
+        )
+        await Bun.write(
+          path.join(cowsayDir, "index.js"),
+          ["export function say({ text }) {", "  return `moo ${text}`", "}", ""].join("\n"),
         )
 
         await Bun.write(
