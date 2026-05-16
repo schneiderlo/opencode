@@ -151,7 +151,7 @@ export const MapReduceTool = Tool.define<typeof parameters, Metadata, never>(
                       : []),
                   ...(cfg.experimental?.primary_tools?.map((name) => ({
                     pattern: "*",
-                    action: "deny" as const,
+                    action: "allow" as const,
                     permission: name,
                   })) ?? []),
                 ] satisfies Permission.Ruleset,

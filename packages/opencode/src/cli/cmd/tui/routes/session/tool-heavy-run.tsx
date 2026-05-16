@@ -22,23 +22,41 @@ export function HeavyRun(props: ToolProps<typeof HeavyRunTool>) {
 
   const rows = createMemo(() => {
     const value = Array.isArray(props.metadata.tasks) ? props.metadata.tasks : []
-    return value.flatMap((item) => {
+    return value.flatMap((item, index) => {
       if (!item || typeof item !== "object") return []
       const title = typeof item.title === "string" ? item.title : ""
       if (!title) return []
       return [
         {
+          index,
           title,
           mode: item.mode === "heavy" ? "heavy" : "direct",
           agent: item.agent === "explore" ? "explore" : "general",
+          goal: typeof item.goal === "string" ? item.goal : "",
+          deliverable: typeof item.deliverable === "string" ? item.deliverable : "",
+          depth: typeof item.depth === "number" ? item.depth : 0,
           status:
-            item.status === "running" || item.status === "completed" || item.status === "error" ? item.status : "pending",
+            item.status === "running" || item.status === "completed" || item.status === "error"
+              ? item.status
+              : "pending",
           sessionID: typeof item.sessionID === "string" ? item.sessionID : "",
           preview: typeof item.preview === "string" ? item.preview : "",
           reportPath: typeof item.reportPath === "string" ? item.reportPath : "",
         },
       ]
     })
+  })
+
+  const plan = createMemo(() => {
+    const value = props.metadata.plan
+    if (!value || typeof value !== "object") return { summary: "", focus: [] as string[] }
+    const item = value as { summary?: unknown; synthesisFocus?: unknown }
+    return {
+      summary: typeof item.summary === "string" ? item.summary : "",
+      focus: Array.isArray(item.synthesisFocus)
+        ? item.synthesisFocus.flatMap((part) => (typeof part === "string" && part ? [part] : []))
+        : [],
+    }
   })
 
   createEffect(() => {
@@ -71,6 +89,7 @@ export function HeavyRun(props: ToolProps<typeof HeavyRunTool>) {
   }
 
   const done = createMemo(() => rows().filter((item) => item.status === "completed").length)
+  const running = createMemo(() => rows().filter((item) => item.status === "running").length)
   const spin = createMemo(() => props.part.state.status === "pending" || props.part.state.status === "running")
   const hint = createMemo(() => {
     if (stage() === "planning") return "Planning heavy analysis..."
@@ -83,15 +102,21 @@ export function HeavyRun(props: ToolProps<typeof HeavyRunTool>) {
   return (
     <Switch>
       <Match when={rows().length > 0}>
-        <BlockTool
-          title={`# Heavy: ${done()}/${rows().length} tasks completed`}
-          part={props.part}
-          spinner={spin()}
-        >
+        <BlockTool title={`# Heavy: ${done()}/${rows().length} tasks completed`} part={props.part} spinner={spin()}>
           <box flexDirection="column" gap={0}>
             <text paddingLeft={3} fg={theme.textMuted}>
-              Stage: {Locale.titlecase(stage())}
+              Stage: {Locale.titlecase(stage())} | Depth {rows()[0]?.depth ?? 0} | {running()} running
             </text>
+            <Show when={plan().summary}>
+              <text paddingLeft={3} fg={theme.textMuted}>
+                Plan: {plan().summary}
+              </text>
+            </Show>
+            <Show when={plan().focus.length}>
+              <text paddingLeft={3} fg={theme.textMuted}>
+                Synthesis focus: {plan().focus.join(", ")}
+              </text>
+            </Show>
 
             <For each={rows()}>
               {(item) => {
@@ -121,14 +146,26 @@ export function HeavyRun(props: ToolProps<typeof HeavyRunTool>) {
                   >
                     <box flexDirection="row" gap={1}>
                       <text style={{ fg: color() }}>[{icon()}]</text>
-                      <text style={{ fg: theme.text }}>{item.title}</text>
+                      <text style={{ fg: theme.text }}>
+                        {item.index + 1}/{rows().length} {item.title}
+                      </text>
                       <text style={{ fg: theme.textMuted }}>
                         ({item.agent}, {item.mode})
                       </text>
                     </box>
+                    <Show when={item.goal}>
+                      <text paddingLeft={6} style={{ fg: theme.textMuted }}>
+                        Goal: {item.goal}
+                      </text>
+                    </Show>
+                    <Show when={item.deliverable}>
+                      <text paddingLeft={6} style={{ fg: theme.textMuted }}>
+                        Deliverable: {item.deliverable}
+                      </text>
+                    </Show>
                     <Show when={item.preview}>
                       <text paddingLeft={6} style={{ fg: theme.textMuted }}>
-                        {item.preview}
+                        Status: {item.preview}
                       </text>
                     </Show>
                     <Show when={item.sessionID && current(item.sessionID).title}>
@@ -143,7 +180,7 @@ export function HeavyRun(props: ToolProps<typeof HeavyRunTool>) {
                     </Show>
                     <Show when={item.reportPath}>
                       <text paddingLeft={6} style={{ fg: theme.textMuted }}>
-                        Nested report: {item.reportPath}
+                        Nested: {item.reportPath}
                       </text>
                     </Show>
                   </box>
@@ -169,7 +206,13 @@ export function HeavyRun(props: ToolProps<typeof HeavyRunTool>) {
         </InlineTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="☍" pending={hint()} complete={props.part.state.status === "completed"} spinner={spin()} part={props.part}>
+        <InlineTool
+          icon="☍"
+          pending={hint()}
+          complete={props.part.state.status === "completed"}
+          spinner={spin()}
+          part={props.part}
+        >
           {hint()}
         </InlineTool>
       </Match>
