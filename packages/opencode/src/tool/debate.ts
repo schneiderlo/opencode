@@ -1,18 +1,18 @@
-import { Tool } from "./tool"
+import * as Tool from "./tool"
 import DESCRIPTION from "./debate.txt"
 import z from "zod"
-import { Session } from "../session"
+import * as Session from "@/session/session"
 import { MessageV2 } from "../session/message-v2"
 import { Agent } from "../agent/agent"
 import { SessionPrompt } from "../session/prompt"
-import { defer } from "@/util/defer"
 import { Config } from "../config/config"
-import { PermissionNext } from "@/permission/next"
-import { Instance } from "../project/instance"
 import path from "path"
 import { mkdir } from "fs/promises"
 import { MessageID } from "../session/schema"
 import { ModelID, ProviderID } from "../provider/schema"
+import { Cause, Effect, Exit } from "effect"
+import { EffectBridge } from "@/effect/bridge"
+import { InstanceState } from "@/effect/instance-state"
 
 const DebateArtifact = z.object({
   topic: z.string(),
@@ -54,112 +54,254 @@ const parameters = z.object({
   rounds: z.number().int().min(1).max(3).default(1).describe("Number of debate rounds (1-2 recommended)"),
 })
 
-export const DebateTool = Tool.define("debate", async (initCtx) => {
-  // Get the model pool from the calling agent (set during init)
-  const modelPool = initCtx?.agent?.modelPool
+type Input = z.infer<typeof parameters>
+type Round = { round: number; responses: Array<{ perspective: string; argument: string }> }
+type Metadata = Record<string, unknown> & {
+  topic?: string
+  perspectives?: string[]
+  rounds?: number
+  transcriptPath?: string
+  jsonPath?: string
+  participants?: Array<{ name: string; position: string }>
+  agreements?: string[]
+  disagreements?: string[]
+  roundsData?: Round[]
+}
 
+function text(error: unknown) {
+  if (Cause.isCause(error)) return Cause.pretty(error)
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
+function select(
+  pool: Array<{ modelID: string; providerID: string }> | undefined,
+  base: { modelID: ModelID; providerID: ProviderID },
+) {
+  if (!pool?.length) return base
+  const item = pool[Math.floor(Math.random() * pool.length)]
   return {
+    modelID: ModelID.make(item.modelID),
+    providerID: ProviderID.make(item.providerID),
+  }
+}
+
+export const DebateTool = Tool.define<typeof parameters, Metadata, never>(
+  "debate",
+  Effect.succeed({
     description: DESCRIPTION,
     parameters,
-    async execute(params: z.infer<typeof parameters>, ctx) {
-      const config = await Config.get()
-      const rounds = params.rounds ?? 1
+    execute: (params: Input, ctx: Tool.Context<Metadata>) =>
+      Effect.gen(function* () {
+        const cfg = yield* Config.Service.use((svc) => svc.get())
+        const sessions = yield* Session.Service
+        const agents = yield* Agent.Service
+        const prompt = yield* SessionPrompt.Service
+        const bridge = yield* EffectBridge.make()
+        const inst = yield* InstanceState.context
+        const rounds = params.rounds ?? 1
+        const caller = yield* agents.get(ctx.agent)
+        const pool = caller.modelPool
 
-      // Helper to select a model from the pool (random) or fall back to default
-      const selectModel = (defaultModel: { modelID: ModelID; providerID: ProviderID }) => {
-        if (modelPool && modelPool.length > 0) {
-          const idx = Math.floor(Math.random() * modelPool.length)
-          return {
-            modelID: ModelID.make(modelPool[idx].modelID),
-            providerID: ProviderID.make(modelPool[idx].providerID),
-          }
+        const tracker = {
+          topic: params.topic,
+          rounds: [] as Round[],
+          status: "pending" as "pending" | "running" | "completed" | "error",
         }
-        return defaultModel
-      }
 
-      // Track debate state
-      const tracker = {
-        topic: params.topic,
-        rounds: [] as Array<{
-          round: number
-          responses: Array<{ perspective: string; argument: string }>
-        }>,
-        status: "pending" as "pending" | "running" | "completed" | "error",
-      }
+        const update = () =>
+          ctx.metadata({
+            title: `Debate: ${params.topic.slice(0, 50)}...`,
+            metadata: {
+              topic: params.topic,
+              perspectives: params.perspectives.map((item) => item.name),
+              roundsCompleted: tracker.rounds.length,
+              totalRounds: rounds,
+              status: tracker.status,
+            },
+          })
 
-      const updateMetadata = () => {
-        ctx.metadata({
-          title: `Debate: ${params.topic.slice(0, 50)}...`,
+        yield* update()
+        tracker.status = "running"
+        yield* update()
+
+        yield* ctx
+          .ask({
+            permission: "debate",
+            patterns: params.perspectives.map((item) => item.name),
+            always: ["*"],
+            metadata: {
+              description: `Debate between ${params.perspectives.map((item) => item.name).join(", ")} for ${rounds} round(s)`,
+              topic: params.topic,
+              rounds,
+            },
+          })
+          .pipe(
+            Effect.catch((error) =>
+              Effect.gen(function* () {
+                tracker.status = "error"
+                yield* update()
+                return yield* Effect.fail(error)
+              }),
+            ),
+          )
+
+        const agent = yield* agents.get("general")
+        if (!agent) throw new Error("General agent not found for debate")
+
+        const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
+        if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
+        const base = agent.model ?? {
+          modelID: msg.info.modelID,
+          providerID: msg.info.providerID,
+        }
+
+        const history: Array<{ perspective: string; argument: string }> = params.perspectives.map((item) => ({
+          perspective: item.name,
+          argument: item.position,
+        }))
+
+        for (let i = 1; i <= rounds; i++) {
+          const responses: Array<{ perspective: string; argument: string }> = []
+
+          for (const perspective of params.perspectives) {
+            const others = history.filter((item) => item.perspective !== perspective.name)
+            const othersText = others.map((item) => `**${item.perspective}**: ${item.argument}`).join("\n\n")
+            const body = debatePrompt({
+              topic: params.topic,
+              name: perspective.name,
+              position: perspective.position,
+              others: othersText,
+              round: i,
+              rounds,
+            })
+
+            const next = yield* sessions.create({
+              parentID: ctx.sessionID,
+              title: `Debate: ${perspective.name} (Round ${i})`,
+              permission: [
+                { permission: "todowrite", pattern: "*", action: "deny" },
+                { permission: "todoread", pattern: "*", action: "deny" },
+                { permission: "task", pattern: "*", action: "deny" },
+                { permission: "map_reduce", pattern: "*", action: "deny" },
+                { permission: "debate", pattern: "*", action: "deny" },
+                ...(cfg.experimental?.primary_tools?.map((name) => ({
+                  pattern: "*",
+                  action: "deny" as const,
+                  permission: name,
+                })) ?? []),
+              ],
+            })
+
+            const cancel = prompt.cancel(next.id)
+            function abort() {
+              bridge.fork(cancel)
+            }
+
+            const result = yield* Effect.acquireUseRelease(
+              Effect.sync(() => {
+                ctx.abort.addEventListener("abort", abort)
+              }),
+              () =>
+                Effect.gen(function* () {
+                  const parts = yield* prompt.resolvePromptParts(
+                    "You are participating in a structured debate. Provide your response directly without using any tools.\n\n" +
+                      body,
+                  )
+                  return yield* prompt.prompt({
+                    messageID: MessageID.ascending(),
+                    sessionID: next.id,
+                    model: select(pool, base),
+                    agent: agent.name,
+                    tools: { "*": false },
+                    parts,
+                  })
+                }),
+              (_, exit) =>
+                Effect.gen(function* () {
+                  if (Exit.hasInterrupts(exit)) yield* cancel
+                }).pipe(
+                  Effect.ensuring(
+                    Effect.sync(() => {
+                      ctx.abort.removeEventListener("abort", abort)
+                    }),
+                  ),
+                ),
+            )
+
+            const content = result.parts.findLast((part) => part.type === "text")?.text ?? ""
+            responses.push({ perspective: perspective.name, argument: content })
+            history.push({ perspective: perspective.name, argument: content })
+          }
+
+          tracker.rounds.push({ round: i, responses })
+          yield* update()
+        }
+
+        const dir = path.join(inst.directory, ".opencode", "council", ctx.sessionID)
+        yield* Effect.promise(() => mkdir(dir, { recursive: true }))
+        const file = path.join(dir, `debate_${Date.now()}.md`)
+        const transcript = formatDebateTranscript(params.topic, params.perspectives, tracker.rounds)
+        yield* Effect.promise(() => Bun.write(file, transcript))
+
+        tracker.status = "completed"
+        yield* update()
+
+        const synthesis = generateDebateSynthesis(params.topic, params.perspectives, tracker.rounds)
+        const artifact = DebateArtifact.parse({
+          topic: params.topic,
+          summary: synthesis,
+          participants: params.perspectives,
+          rounds: tracker.rounds,
+          agreements: [],
+          disagreements: params.perspectives.map((item) => item.name),
+          transcript_path: file,
+        })
+        const json = path.join(dir, `debate_${Date.now()}.json`)
+        yield* Effect.promise(() => Bun.write(json, JSON.stringify(artifact, null, 2) + "\n"))
+
+        return {
+          title: `Debate completed: ${rounds} round(s)`,
           metadata: {
             topic: params.topic,
-            perspectives: params.perspectives.map((p) => p.name),
-            roundsCompleted: tracker.rounds.length,
-            totalRounds: rounds,
-            status: tracker.status,
+            perspectives: params.perspectives.map((item) => item.name),
+            rounds: tracker.rounds.length,
+            transcriptPath: file,
+            jsonPath: json,
+            participants: artifact.participants,
+            agreements: artifact.agreements,
+            disagreements: artifact.disagreements,
+            roundsData: artifact.rounds,
           },
-        })
-      }
+          output: synthesis,
+        }
+      }).pipe(
+        Effect.catchCause((cause) => Effect.fail(new Error(text(cause)))),
+        Effect.orDie,
+      ) as unknown as Effect.Effect<Tool.ExecuteResult<Metadata>>,
+  }),
+)
 
-      updateMetadata()
-      tracker.status = "running"
-      updateMetadata()
-
-      // Ask permission
-      try {
-        await ctx.ask({
-          permission: "debate",
-          patterns: params.perspectives.map((p) => p.name),
-          always: ["*"],
-          metadata: {
-            description: `Debate between ${params.perspectives.map((p) => p.name).join(", ")} for ${rounds} round(s)`,
-            topic: params.topic,
-            rounds,
-          },
-        })
-      } catch (err: any) {
-        tracker.status = "error"
-        updateMetadata()
-        throw err
-      }
-
-      const agent = await Agent.get("general")
-      if (!agent) throw new Error("General agent not found for debate")
-
-      const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
-      if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
-
-      const defaultModel = agent.model ?? {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
-      }
-
-      // Build conversation history for each round
-      const history: Array<{ perspective: string; argument: string }> = params.perspectives.map((p) => ({
-        perspective: p.name,
-        argument: p.position,
-      }))
-
-      // Execute debate rounds
-      for (let round = 1; round <= rounds; round++) {
-        const roundResponses: Array<{ perspective: string; argument: string }> = []
-
-        // Each perspective responds to the others
-        for (const perspective of params.perspectives) {
-          const others = history.filter((h) => h.perspective !== perspective.name)
-          const othersText = others.map((o) => `**${o.perspective}**: ${o.argument}`).join("\n\n")
-
-          const prompt = `You are continuing a structured debate from the perspective of a ${perspective.name}.
+function debatePrompt(input: {
+  topic: string
+  name: string
+  position: string
+  others: string
+  round: number
+  rounds: number
+}) {
+  return `You are continuing a structured debate from the perspective of a ${input.name}.
 
 ## Topic Being Debated
-${params.topic}
+${input.topic}
 
 ## Your Previous Position
-${perspective.position}
+${input.position}
 
 ## Other Perspectives Have Argued
-${othersText}
+${input.others}
 
-## Your Task (Round ${round} of ${rounds})
+## Your Task (Round ${input.round} of ${input.rounds})
 
 Provide a DETAILED and SUBSTANTIVE response to the other perspectives' arguments. Your response should be comprehensive - aim for 400-800 words.
 
@@ -182,151 +324,59 @@ Based on this round of discussion:
 - Are there any new considerations that have emerged?
 
 ### Key Takeaways
-What are the 2-3 most important points you want the other perspectives (and the final synthesizer) to understand from your position?
+What are the 2-3 most important points you want the other perspectives and the final synthesizer to understand from your position?
 
 Be thorough and substantive. This debate is meant to surface the best arguments and reach a well-reasoned conclusion.`
-
-          const session = await Session.create({
-            parentID: ctx.sessionID,
-            title: `Debate: ${perspective.name} (Round ${round})`,
-            permission: [
-              { permission: "todowrite", pattern: "*", action: "deny" },
-              { permission: "todoread", pattern: "*", action: "deny" },
-              { permission: "task", pattern: "*", action: "deny" },
-              { permission: "map_reduce", pattern: "*", action: "deny" },
-              { permission: "debate", pattern: "*", action: "deny" },
-            ],
-          })
-
-          const messageID = MessageID.ascending()
-
-          function cancel() {
-            SessionPrompt.cancel(session.id)
-          }
-          ctx.abort.addEventListener("abort", cancel)
-          using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
-
-          const systemNote =
-            "You are participating in a structured debate. Provide your response directly without using any tools.\n\n"
-          const promptParts = await SessionPrompt.resolvePromptParts(systemNote + prompt)
-
-          const result = await SessionPrompt.prompt({
-            messageID,
-            sessionID: session.id,
-            model: selectModel(defaultModel),
-            agent: agent.name,
-            tools: {
-              "*": false, // Disable all tools for debate responses
-            },
-            parts: promptParts,
-          })
-
-          const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""
-          roundResponses.push({ perspective: perspective.name, argument: text })
-          history.push({ perspective: perspective.name, argument: text })
-        }
-
-        tracker.rounds.push({ round, responses: roundResponses })
-        updateMetadata()
-      }
-
-      // Save debate transcript
-      const outputDir = path.join(Instance.directory, ".opencode", "council", ctx.sessionID)
-      await mkdir(outputDir, { recursive: true })
-      const filename = `debate_${Date.now()}.md`
-      const filepath = path.join(outputDir, filename)
-
-      const transcript = formatDebateTranscript(params.topic, params.perspectives, tracker.rounds)
-      await Bun.write(filepath, transcript)
-
-      tracker.status = "completed"
-      updateMetadata()
-
-      // Generate synthesis
-      const synthesis = generateDebateSynthesis(params.topic, params.perspectives, tracker.rounds)
-      const artifact = DebateArtifact.parse({
-        topic: params.topic,
-        summary: synthesis,
-        participants: params.perspectives,
-        rounds: tracker.rounds,
-        agreements: [],
-        disagreements: params.perspectives.map((item) => item.name),
-        transcript_path: filepath,
-      })
-      const jsonPath = path.join(outputDir, `debate_${Date.now()}.json`)
-      await Bun.write(jsonPath, JSON.stringify(artifact, null, 2) + "\n")
-
-      return {
-        title: `Debate completed: ${rounds} round(s)`,
-        metadata: {
-          topic: params.topic,
-          perspectives: params.perspectives.map((p) => p.name),
-          rounds: tracker.rounds.length,
-          transcriptPath: filepath,
-          jsonPath,
-          participants: artifact.participants,
-          agreements: artifact.agreements,
-          disagreements: artifact.disagreements,
-          roundsData: artifact.rounds,
-        },
-        output: synthesis,
-      }
-    },
-  }
-})
+}
 
 function formatDebateTranscript(
   topic: string,
   perspectives: Array<{ name: string; position: string }>,
-  rounds: Array<{ round: number; responses: Array<{ perspective: string; argument: string }> }>,
+  rounds: Round[],
 ): string {
-  let md = `# Debate Transcript\n\n`
-  md += `## Topic\n${topic}\n\n`
-  md += `## Initial Positions\n\n`
-
-  for (const p of perspectives) {
-    md += `### ${p.name}\n${p.position}\n\n`
-  }
-
-  for (const round of rounds) {
-    md += `---\n\n## Round ${round.round}\n\n`
-    for (const response of round.responses) {
-      md += `### ${response.perspective}\n${response.argument}\n\n`
-    }
-  }
-
-  return md
+  const head = [`# Debate Transcript`, "", `## Topic`, topic, "", `## Initial Positions`, ""]
+  const initial = perspectives.flatMap((item) => [`### ${item.name}`, item.position, ""])
+  const body = rounds.flatMap((round) => [
+    "---",
+    "",
+    `## Round ${round.round}`,
+    "",
+    ...round.responses.flatMap((item) => [`### ${item.perspective}`, item.argument, ""]),
+  ])
+  return [...head, ...initial, ...body].join("\n")
 }
 
 function generateDebateSynthesis(
   topic: string,
   perspectives: Array<{ name: string; position: string }>,
-  rounds: Array<{ round: number; responses: Array<{ perspective: string; argument: string }> }>,
+  rounds: Round[],
 ): string {
-  let output = `## Debate Summary: ${topic}\n\n`
-
-  output += `### Initial Positions\n\n`
-  for (const p of perspectives) {
-    output += `#### ${p.name}\n${p.position}\n\n`
-  }
-
-  output += `---\n\n### Debate Rounds\n\n`
-  for (const round of rounds) {
-    output += `#### Round ${round.round}\n\n`
-    for (const response of round.responses) {
-      output += `##### ${response.perspective}\n${response.argument}\n\n`
-    }
-    output += `---\n\n`
-  }
-
-  output += `### Synthesis Notes\n\n`
-  output += `This debate involved ${perspectives.length} perspectives over ${rounds.length} round(s).\n\n`
-  output += `**When synthesizing, consider:**\n`
-  output += `- Which arguments were strongest and why?\n`
-  output += `- Where did perspectives converge during the debate?\n`
-  output += `- What are the remaining points of genuine disagreement?\n`
-  output += `- What underlying assumptions or values drive the different positions?\n`
-  output += `- What would be the most balanced recommendation given all viewpoints?\n`
-
-  return output
+  return [
+    `## Debate Summary: ${topic}`,
+    "",
+    "### Initial Positions",
+    "",
+    ...perspectives.flatMap((item) => [`#### ${item.name}`, item.position, ""]),
+    "---",
+    "",
+    "### Debate Rounds",
+    "",
+    ...rounds.flatMap((round) => [
+      `#### Round ${round.round}`,
+      "",
+      ...round.responses.flatMap((item) => [`##### ${item.perspective}`, item.argument, ""]),
+      "---",
+      "",
+    ]),
+    "### Synthesis Notes",
+    "",
+    `This debate involved ${perspectives.length} perspectives over ${rounds.length} round(s).`,
+    "",
+    "**When synthesizing, consider:**",
+    "- Which arguments were strongest and why?",
+    "- Where did perspectives converge during the debate?",
+    "- What are the remaining points of genuine disagreement?",
+    "- What underlying assumptions or values drive the different positions?",
+    "- What would be the most balanced recommendation given all viewpoints?",
+  ].join("\n")
 }

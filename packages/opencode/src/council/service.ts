@@ -5,13 +5,16 @@ import { CouncilDebate } from "./debate"
 import { CouncilReport } from "./report"
 import { CouncilSchema } from "./schema"
 import { RunHtml } from "../report/html"
-import { defer } from "@/util/defer"
 import { DebateTool } from "../tool/debate"
 import { MessageV2 } from "../session/message-v2"
-import { Session } from "../session"
+import * as Session from "../session/session"
 import { SessionPrompt } from "../session/prompt"
 import { MessageID } from "../session/schema"
-import type { Tool } from "../tool/tool"
+import * as Tool from "../tool/tool"
+import { Cause, Effect, Exit } from "effect"
+import { EffectBridge } from "@/effect/bridge"
+import { Permission } from "@/permission"
+import { ModelID, ProviderID } from "../provider/schema"
 import z from "zod"
 
 const params = z.object({
@@ -20,99 +23,147 @@ const params = z.object({
   include_debate: z.boolean().default(true),
 })
 
+type Base = {
+  modelID: ModelID
+  providerID: ProviderID
+}
+
+type Tracker = {
+  perspectives: Array<{
+    id: string
+    name: string
+    status: "pending" | "running" | "completed" | "error"
+    sessionID: string
+    preview: string
+  }>
+  debates: Array<{
+    topic: string
+    status: "pending" | "running" | "completed" | "error"
+    preview: string
+  }>
+}
+
 export namespace CouncilService {
   export const Input = params
   export type Input = z.infer<typeof Input>
 
   const rules = [
-    { permission: "todowrite", pattern: "*", action: "deny" as const },
-    { permission: "todoread", pattern: "*", action: "deny" as const },
-    { permission: "task", pattern: "*", action: "deny" as const },
-    { permission: "map_reduce", pattern: "*", action: "deny" as const },
-    { permission: "debate", pattern: "*", action: "deny" as const },
-    { permission: "council_run", pattern: "*", action: "deny" as const },
-    { permission: "edit", pattern: "*", action: "deny" as const },
-    { permission: "write", pattern: "*", action: "deny" as const },
-    { permission: "apply_patch", pattern: "*", action: "deny" as const },
-    { permission: "bash", pattern: "*", action: "deny" as const },
-  ]
+    { permission: "todowrite", pattern: "*", action: "deny" },
+    { permission: "todoread", pattern: "*", action: "deny" },
+    { permission: "task", pattern: "*", action: "deny" },
+    { permission: "map_reduce", pattern: "*", action: "deny" },
+    { permission: "debate", pattern: "*", action: "deny" },
+    { permission: "council_run", pattern: "*", action: "deny" },
+    { permission: "edit", pattern: "*", action: "deny" },
+    { permission: "write", pattern: "*", action: "deny" },
+    { permission: "apply_patch", pattern: "*", action: "deny" },
+    { permission: "bash", pattern: "*", action: "deny" },
+  ] satisfies Permission.Ruleset
+
+  function text(error: unknown) {
+    if (Cause.isCause(error)) return Cause.pretty(error)
+    if (error instanceof Error) return error.message
+    return String(error)
+  }
 
   function schema(input: z.ZodType) {
-    return z.toJSONSchema(input) as Record<string, any>
+    return z.toJSONSchema(input) as Record<string, unknown>
   }
 
-  async function model(ctx: Tool.Context) {
-    const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
-    if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
-
-    return {
-      model: {
+  function model(ctx: Tool.Context) {
+    return Effect.gen(function* () {
+      const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
+      if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
+      return {
         modelID: msg.info.modelID,
         providerID: msg.info.providerID,
-      },
-    }
+      }
+    })
   }
 
-  async function run(input: {
+  function run(input: {
     ctx: Tool.Context
-    model: Awaited<ReturnType<typeof model>>["model"]
+    model: Base
     title: string
     prompt: string
     format: z.ZodType
-    onStart?: (sessionID: string) => void
+    onStart?: (sessionID: string) => Effect.Effect<void>
   }) {
-    const agent = await Agent.get("general")
-    if (!agent) throw new Error("General agent not found")
+    return Effect.gen(function* () {
+      const agents = yield* Agent.Service
+      const config = yield* Config.Service
+      const sessions = yield* Session.Service
+      const prompts = yield* SessionPrompt.Service
+      const bridge = yield* EffectBridge.make()
+      const agent = yield* agents.get("general")
+      if (!agent) throw new Error("General agent not found")
+      const cfg = yield* config.get()
+      const session = yield* sessions.create({
+        parentID: input.ctx.sessionID,
+        title: input.title,
+        permission: [
+          ...rules,
+          ...(cfg.experimental?.primary_tools?.map((item) => ({
+            pattern: "*",
+            action: "deny" as const,
+            permission: item,
+          })) ?? []),
+        ],
+      })
+      if (input.onStart) yield* input.onStart(session.id)
 
-    const config = await Config.get()
-    const session = await Session.create({
-      parentID: input.ctx.sessionID,
-      title: input.title,
-      permission: [
-        ...rules,
-        ...(config.experimental?.primary_tools?.map((item) => ({
-          pattern: "*",
-          action: "deny" as const,
-          permission: item,
-        })) ?? []),
-      ],
+      const cancel = prompts.cancel(session.id)
+      function abort() {
+        bridge.fork(cancel)
+      }
+
+      const message = yield* Effect.acquireUseRelease(
+        Effect.sync(() => {
+          input.ctx.abort.addEventListener("abort", abort)
+        }),
+        () =>
+          Effect.gen(function* () {
+            const parts = yield* prompts.resolvePromptParts(input.prompt)
+            return yield* prompts.prompt({
+              messageID: MessageID.ascending(),
+              sessionID: session.id,
+              model: input.model,
+              agent: agent.name,
+              tools: {
+                "*": true,
+                bash: false,
+                edit: false,
+                write: false,
+                apply_patch: false,
+                task: false,
+                map_reduce: false,
+                debate: false,
+                council_run: false,
+              },
+              format: {
+                type: "json_schema",
+                schema: schema(input.format),
+                retryCount: 1,
+              },
+              parts,
+            })
+          }),
+        (_, exit) =>
+          Effect.gen(function* () {
+            if (Exit.hasInterrupts(exit)) yield* cancel
+          }).pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                input.ctx.abort.removeEventListener("abort", abort)
+              }),
+            ),
+          ),
+      )
+      return {
+        sessionID: session.id,
+        message,
+      }
     })
-    input.onStart?.(session.id)
-
-    const messageID = MessageID.ascending()
-    function cancel() {
-      SessionPrompt.cancel(session.id)
-    }
-    input.ctx.abort.addEventListener("abort", cancel)
-    using _ = defer(() => input.ctx.abort.removeEventListener("abort", cancel))
-
-    const message = await SessionPrompt.prompt({
-      messageID,
-      sessionID: session.id,
-      model: input.model,
-      agent: agent.name,
-      tools: {
-        "*": true,
-        bash: false,
-        edit: false,
-        write: false,
-        apply_patch: false,
-        task: false,
-        map_reduce: false,
-        debate: false,
-        council_run: false,
-      },
-      format: {
-        type: "json_schema",
-        schema: schema(input.format),
-        retryCount: 1,
-      },
-      parts: await SessionPrompt.resolvePromptParts(input.prompt),
-    })
-    return {
-      sessionID: session.id,
-      message,
-    }
   }
 
   function planPrompt(input: Input) {
@@ -214,7 +265,7 @@ export namespace CouncilService {
       decision_log:
         input.synth.decision_log.trim() ||
         [
-          ...uniq(input.results.flatMap((item) => item.analysis ? [item.analysis] : [])),
+          ...uniq(input.results.flatMap((item) => (item.analysis ? [item.analysis] : []))),
           ...uniq(input.debates.map((item) => item.summary)),
         ]
           .join("\n\n")
@@ -224,10 +275,7 @@ export namespace CouncilService {
         : uniq([...recurring(input.results), ...input.debates.flatMap((item) => item.agreements)]),
       disagreements: input.synth.disagreements.length
         ? uniq(input.synth.disagreements)
-        : uniq([
-            ...input.debates.flatMap((item) => item.disagreements),
-            ...input.debates.map((item) => item.topic),
-          ]),
+        : uniq([...input.debates.flatMap((item) => item.disagreements), ...input.debates.map((item) => item.topic)]),
       tradeoffs: input.synth.tradeoffs.length
         ? uniq(input.synth.tradeoffs)
         : uniq(input.results.flatMap((item) => item.tradeoffs)),
@@ -240,272 +288,279 @@ export namespace CouncilService {
     })
   }
 
-  export async function execute(input: { input: Input; ctx: Tool.Context }) {
-    await input.ctx.ask({
-      permission: "council_run",
-      patterns: [input.input.query.slice(0, 120)],
-      always: ["*"],
-      metadata: {
-        query: input.input.query,
-        includeDebate: input.input.include_debate,
-      },
-    })
-
-    const base = await model(input.ctx)
-    const dir = await CouncilArtifact.init({
-      sessionID: input.ctx.sessionID,
-      messageID: input.ctx.messageID,
-    })
-
-    input.ctx.metadata({
+  function update(input: { ctx: Tool.Context; stage: string; dir: string; tracker?: Tracker }) {
+    return input.ctx.metadata({
       title: "Council analysis",
       metadata: {
-        stage: "planning",
-        dir,
+        stage: input.stage,
+        dir: input.dir,
+        perspectives: input.tracker?.perspectives,
+        debates: input.tracker?.debates,
       },
     })
+  }
 
-    const requestPath = `${dir}/request.json`
-    const planPath = `${dir}/plan.json`
-    const synthesisPath = `${dir}/synthesis.json`
-    const reportPath = `${dir}/COUNCIL_REPORT.md`
-    const reportHtmlPath = `${dir}/COUNCIL_REPORT.html`
-    await CouncilArtifact.json(requestPath, input.input)
-
-    const planMsg = await run({
-      ctx: input.ctx,
-      model: base.model,
-      title: "Council planning",
-      prompt: planPrompt(input.input),
-      format: CouncilSchema.Plan,
-    })
-    const plan = parse(planMsg.message, CouncilSchema.Plan)
-    await CouncilArtifact.json(planPath, plan)
-
-    const tracker = {
-      perspectives: plan.perspectives.map((item) => ({
-        id: item.id,
-        name: item.name,
-        status: "pending" as "pending" | "running" | "completed" | "error",
-        sessionID: "",
-        preview: "",
-      })),
-      debates: [] as Array<{
-        topic: string
-        status: "pending" | "running" | "completed" | "error"
-        preview: string
-      }>,
-    }
-    const update = (stage: string) =>
-      input.ctx.metadata({
-        title: "Council analysis",
+  export function execute(input: { input: Input; ctx: Tool.Context }) {
+    return Effect.gen(function* () {
+      yield* input.ctx.ask({
+        permission: "council_run",
+        patterns: [input.input.query.slice(0, 120)],
+        always: ["*"],
         metadata: {
-          stage,
-          dir,
-          perspectives: tracker.perspectives,
-          debates: tracker.debates,
+          query: input.input.query,
+          includeDebate: input.input.include_debate,
         },
       })
 
-    update("consulting")
-
-    const results = await Promise.all(
-      plan.perspectives.map(async (persona, index) => {
-        const state = tracker.perspectives[index]
-        const task = CouncilSchema.Task.parse({
-          topic: plan.topic,
-          summary: plan.summary,
-          user_query: input.input.query,
-          shared_context: [...input.input.context, ...plan.shared_context],
-          persona,
-          required_sections: [
-            "executive_summary",
-            "analysis",
-            "findings",
-            "recommendations",
-            "tradeoffs",
-            "unknowns",
-            "confidence",
-          ],
-        })
-        state.status = "running"
-        update("consulting")
-        try {
-          const msg = await run({
-            ctx: input.ctx,
-            model: base.model,
-            title: `Council: ${persona.name}`,
-            prompt: taskPrompt(task),
-            format: CouncilSchema.Result,
-            onStart(sessionID) {
-              state.sessionID = sessionID
-              update("consulting")
-            },
-          })
-          const result = parse(msg.message, CouncilSchema.Result)
-          state.status = "completed"
-          state.preview = (result.executive_summary || result.analysis || result.findings[0] || "").slice(0, 220)
-          update("consulting")
-        const id = CouncilArtifact.perspective(persona.id || persona.name)
-        const json = `${dir}/perspectives/${id}.json`
-        const md = `${dir}/perspectives/${id}.md`
-        await CouncilArtifact.json(json, { task, result })
-        await Bun.write(
-          md,
-          [
-            `# ${result.perspective}`,
-            "",
-            result.executive_summary,
-            ...(result.analysis ? ["", result.analysis] : []),
-            "",
-            "## Findings",
-            result.findings.map((item) => `- ${item}`).join("\n"),
-            "",
-            "## Recommendations",
-            result.recommendations.map((item) => `- ${item}`).join("\n"),
-            "",
-            "## Tradeoffs",
-            (result.tradeoffs.length ? result.tradeoffs : ["None recorded"]).map((item) => `- ${item}`).join("\n"),
-            "",
-            "## Unknowns",
-            (result.unknowns.length ? result.unknowns : ["None recorded"]).map((item) => `- ${item}`).join("\n"),
-            ...(result.confidence ? ["", `## Confidence`, result.confidence] : []),
-            "",
-          ].join("\n"),
-        )
-        return { task, result, json, md }
-        } catch (error: any) {
-          state.status = "error"
-          state.preview = error?.message ?? String(error)
-          update("consulting")
-          throw error
-        }
-      }),
-    )
-    const perspectivePaths = results.map((item) => item.json)
-
-    const debates = [] as Array<CouncilSchema.Debate & { json: string; md?: string }>
-    const pairs = input.input.include_debate
-      ? CouncilDebate.select({ plan, results: results.map((item) => item.result) })
-      : []
-    tracker.debates = pairs.map((item) => ({
-      topic: item.topic,
-      status: "pending",
-      preview: "",
-    }))
-    if (pairs.length) {
-      update("debating")
-    }
-
-    for (const [index, item] of pairs.entries()) {
-      const state = tracker.debates[index]
-      state.status = "running"
-      update("debating")
-      const tool = await DebateTool.init()
-      const out = await tool.execute(
-        {
-          topic: item.topic,
-          perspectives: item.participants,
-          rounds: 1,
-        },
-        {
-          ...input.ctx,
-          ask: async () => {},
-          metadata: () => {},
-        },
-      )
-      const debate = CouncilSchema.Debate.parse({
-        topic: item.topic,
-        summary: out.output,
-        participants: out.metadata.participants ?? item.participants,
-        rounds: out.metadata.roundsData ?? [],
-        agreements: out.metadata.agreements ?? [],
-        disagreements: out.metadata.disagreements ?? [],
-        transcript_path: out.metadata.transcriptPath,
+      const base = yield* model(input.ctx)
+      const dir = yield* CouncilArtifact.init({
+        sessionID: input.ctx.sessionID,
+        messageID: input.ctx.messageID,
       })
-      const id = CouncilArtifact.debate(item.topic)
-      const json = `${dir}/debates/${id}.json`
-      const md = `${dir}/debates/${id}.md`
-      await CouncilArtifact.json(json, debate)
-      if (out.metadata.transcriptPath) {
-        const file = Bun.file(out.metadata.transcriptPath)
-        if (await file.exists()) await Bun.write(md, await file.text())
+
+      yield* update({ ctx: input.ctx, stage: "planning", dir })
+
+      const requestPath = `${dir}/request.json`
+      const planPath = `${dir}/plan.json`
+      const synthesisPath = `${dir}/synthesis.json`
+      const reportPath = `${dir}/COUNCIL_REPORT.md`
+      const reportHtmlPath = `${dir}/COUNCIL_REPORT.html`
+      yield* CouncilArtifact.json(requestPath, input.input)
+
+      const planMsg = yield* run({
+        ctx: input.ctx,
+        model: base,
+        title: "Council planning",
+        prompt: planPrompt(input.input),
+        format: CouncilSchema.Plan,
+      })
+      const plan = parse(planMsg.message, CouncilSchema.Plan)
+      yield* CouncilArtifact.json(planPath, plan)
+
+      const tracker: Tracker = {
+        perspectives: plan.perspectives.map((item) => ({
+          id: item.id,
+          name: item.name,
+          status: "pending",
+          sessionID: "",
+          preview: "",
+        })),
+        debates: [],
       }
-      debates.push({ ...debate, json, md: await Bun.file(md).exists() ? md : undefined })
-      state.status = "completed"
-      state.preview = debate.summary.slice(0, 220)
-      update("debating")
-    }
-    const debatePaths = debates.map((item) => item.json)
 
-    update("synthesizing")
+      yield* update({ ctx: input.ctx, stage: "consulting", dir, tracker })
 
-    const synthMsg = await run({
-      ctx: input.ctx,
-      model: base.model,
-      title: "Council synthesis",
-      prompt: synthPrompt({
-        query: input.input.query,
-        plan,
+      const results = yield* Effect.forEach(
+        plan.perspectives,
+        (persona, index) =>
+          Effect.gen(function* () {
+            const state = tracker.perspectives[index]
+            const task = CouncilSchema.Task.parse({
+              topic: plan.topic,
+              summary: plan.summary,
+              user_query: input.input.query,
+              shared_context: [...input.input.context, ...plan.shared_context],
+              persona,
+              required_sections: [
+                "executive_summary",
+                "analysis",
+                "findings",
+                "recommendations",
+                "tradeoffs",
+                "unknowns",
+                "confidence",
+              ],
+            })
+            state.status = "running"
+            yield* update({ ctx: input.ctx, stage: "consulting", dir, tracker })
+            const msg = yield* run({
+              ctx: input.ctx,
+              model: base,
+              title: `Council: ${persona.name}`,
+              prompt: taskPrompt(task),
+              format: CouncilSchema.Result,
+              onStart(sessionID) {
+                state.sessionID = sessionID
+                return update({ ctx: input.ctx, stage: "consulting", dir, tracker })
+              },
+            }).pipe(
+              Effect.catchCause((cause) =>
+                Effect.gen(function* () {
+                  state.status = "error"
+                  state.preview = text(cause)
+                  yield* update({ ctx: input.ctx, stage: "consulting", dir, tracker })
+                  return yield* Effect.failCause(cause)
+                }),
+              ),
+            )
+            const result = parse(msg.message, CouncilSchema.Result)
+            state.status = "completed"
+            state.preview = (result.executive_summary || result.analysis || result.findings[0] || "").slice(0, 220)
+            yield* update({ ctx: input.ctx, stage: "consulting", dir, tracker })
+
+            const id = CouncilArtifact.perspective(persona.id || persona.name)
+            const json = `${dir}/perspectives/${id}.json`
+            const md = `${dir}/perspectives/${id}.md`
+            yield* CouncilArtifact.json(json, { task, result })
+            yield* Effect.promise(() =>
+              Bun.write(
+                md,
+                [
+                  `# ${result.perspective}`,
+                  "",
+                  result.executive_summary,
+                  ...(result.analysis ? ["", result.analysis] : []),
+                  "",
+                  "## Findings",
+                  result.findings.map((item) => `- ${item}`).join("\n"),
+                  "",
+                  "## Recommendations",
+                  result.recommendations.map((item) => `- ${item}`).join("\n"),
+                  "",
+                  "## Tradeoffs",
+                  (result.tradeoffs.length ? result.tradeoffs : ["None recorded"])
+                    .map((item) => `- ${item}`)
+                    .join("\n"),
+                  "",
+                  "## Unknowns",
+                  (result.unknowns.length ? result.unknowns : ["None recorded"])
+                    .map((item) => `- ${item}`)
+                    .join("\n"),
+                  ...(result.confidence ? ["", `## Confidence`, result.confidence] : []),
+                  "",
+                ].join("\n"),
+              ),
+            )
+            return { task, result, json, md }
+          }),
+        { concurrency: "unbounded" },
+      )
+      const perspectivePaths = results.map((item) => item.json)
+
+      const pairs = input.input.include_debate
+        ? CouncilDebate.select({ plan, results: results.map((item) => item.result) })
+        : []
+      tracker.debates = pairs.map((item) => ({
+        topic: item.topic,
+        status: "pending",
+        preview: "",
+      }))
+      if (pairs.length) yield* update({ ctx: input.ctx, stage: "debating", dir, tracker })
+
+      const debateInfo = yield* DebateTool
+      const debate = yield* Tool.init(debateInfo)
+      const debates: Array<CouncilSchema.Debate & { json: string; md?: string }> = []
+      for (const [index, item] of pairs.entries()) {
+        const state = tracker.debates[index]
+        state.status = "running"
+        yield* update({ ctx: input.ctx, stage: "debating", dir, tracker })
+        const out = yield* debate.execute(
+          {
+            topic: item.topic,
+            perspectives: item.participants,
+            rounds: 1,
+          },
+          {
+            ...input.ctx,
+            ask: () => Effect.void,
+            metadata: () => Effect.void,
+          },
+        )
+        const debateResult = CouncilSchema.Debate.parse({
+          topic: item.topic,
+          summary: out.output,
+          participants: out.metadata.participants ?? item.participants,
+          rounds: out.metadata.roundsData ?? [],
+          agreements: out.metadata.agreements ?? [],
+          disagreements: out.metadata.disagreements ?? [],
+          transcript_path: out.metadata.transcriptPath,
+        })
+        const id = CouncilArtifact.debate(item.topic)
+        const json = `${dir}/debates/${id}.json`
+        const md = `${dir}/debates/${id}.md`
+        yield* CouncilArtifact.json(json, debateResult)
+        if (out.metadata.transcriptPath) {
+          const file = Bun.file(out.metadata.transcriptPath)
+          if (yield* Effect.promise(() => file.exists())) yield* Effect.promise(() => file.text().then((body) => Bun.write(md, body)))
+        }
+        const exists = yield* Effect.promise(() => Bun.file(md).exists())
+        debates.push({ ...debateResult, json, md: exists ? md : undefined })
+        state.status = "completed"
+        state.preview = debateResult.summary.slice(0, 220)
+        yield* update({ ctx: input.ctx, stage: "debating", dir, tracker })
+      }
+      const debatePaths = debates.map((item) => item.json)
+
+      yield* update({ ctx: input.ctx, stage: "synthesizing", dir, tracker })
+
+      const synthMsg = yield* run({
+        ctx: input.ctx,
+        model: base,
+        title: "Council synthesis",
+        prompt: synthPrompt({
+          query: input.input.query,
+          plan,
+          results: results.map((item) => item.result),
+          debates,
+        }),
+        format: CouncilSchema.Synthesis,
+      })
+      const normalized = normalize({
         results: results.map((item) => item.result),
         debates,
-      }),
-      format: CouncilSchema.Synthesis,
-    })
-    const synth = parse(synthMsg.message, CouncilSchema.Synthesis)
-    const normalized = normalize({
-      results: results.map((item) => item.result),
-      debates,
-      synth,
-    })
-    await CouncilArtifact.json(synthesisPath, normalized)
+        synth: parse(synthMsg.message, CouncilSchema.Synthesis),
+      })
+      yield* CouncilArtifact.json(synthesisPath, normalized)
 
-    const paths = CouncilSchema.Paths.parse({
-      root: dir,
-      request: requestPath,
-      plan: planPath,
-      perspectives: perspectivePaths,
-      debates: debatePaths,
-      synthesis: synthesisPath,
-      report: reportPath,
-      report_html: reportHtmlPath,
-    })
-    await CouncilArtifact.json(`${dir}/paths.json`, paths)
+      const paths = CouncilSchema.Paths.parse({
+        root: dir,
+        request: requestPath,
+        plan: planPath,
+        perspectives: perspectivePaths,
+        debates: debatePaths,
+        synthesis: synthesisPath,
+        report: reportPath,
+        report_html: reportHtmlPath,
+      })
+      yield* CouncilArtifact.json(`${dir}/paths.json`, paths)
 
-    const report = CouncilReport.render({
-      query: input.input.query,
-      plan,
-      results,
-      debates,
-      synth: normalized,
-    })
-    await Bun.write(reportPath, report)
-    await Bun.write(
-      reportHtmlPath,
-      RunHtml.council({
-        dir,
+      const report = CouncilReport.render({
         query: input.input.query,
         plan,
         results,
         debates,
         synth: normalized,
-        report,
+      })
+      yield* Effect.promise(() => Bun.write(reportPath, report))
+      yield* Effect.promise(() =>
+        Bun.write(
+          reportHtmlPath,
+          RunHtml.council({
+            dir,
+            query: input.input.query,
+            plan,
+            results,
+            debates,
+            synth: normalized,
+            report,
+            reportPath,
+            reportHtmlPath,
+          }),
+        ),
+      )
+      yield* update({ ctx: input.ctx, stage: "completed", dir, tracker })
+
+      return {
+        dir,
         reportPath,
         reportHtmlPath,
-      }),
-    )
-    update("completed")
-
-    return {
-      dir,
-      reportPath,
-      reportHtmlPath,
-      paths,
-      plan,
-      tracker,
-      results,
-      debates,
-      synth: normalized,
-    }
+        paths,
+        plan,
+        tracker,
+        results,
+        debates,
+        synth: normalized,
+      }
+    })
   }
 }

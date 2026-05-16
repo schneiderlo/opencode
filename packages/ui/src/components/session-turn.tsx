@@ -8,8 +8,8 @@ import type { SessionStatus } from "@opencode-ai/sdk/v2"
 import { useData } from "../context"
 import { useFileComponent } from "../context/file"
 
-import { Binary } from "@opencode-ai/util/binary"
-import { getDirectory, getFilename } from "@opencode-ai/util/path"
+import { Binary } from "@opencode-ai/core/util/binary"
+import { getDirectory, getFilename } from "@opencode-ai/core/util/path"
 import { createEffect, createMemo, createSignal, For, on, ParentProps, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
@@ -90,6 +90,12 @@ function list<T>(value: T[] | undefined | null, fallback: T[]) {
   return fallback
 }
 
+type SummaryDiff = SnapshotFileDiff & { file: string }
+
+function summaryDiff(value: SnapshotFileDiff): value is SummaryDiff {
+  return typeof value.file === "string"
+}
+
 const hidden = new Set(["todowrite"])
 
 function partState(part: PartType, showReasoningSummaries: boolean) {
@@ -110,7 +116,7 @@ function partState(part: PartType, showReasoningSummaries: boolean) {
 function clean(value: string) {
   return value
     .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     .replace(/[*_~]+/g, "")
     .trim()
 }
@@ -169,7 +175,7 @@ export function SessionTurn(
   const emptyMessages: MessageType[] = []
   const emptyParts: PartType[] = []
   const emptyAssistant: AssistantMessage[] = []
-  const emptyDiffs: SnapshotFileDiff[] = []
+  const emptyDiffs: SummaryDiff[] = []
   const idle = { type: "idle" as const }
 
   const allMessages = createMemo(() => props.messages ?? list(data.store.message?.[props.sessionID], emptyMessages))
@@ -238,7 +244,8 @@ export function SessionTurn(
 
     const seen = new Set<string>()
     return files
-      .reduceRight<SnapshotFileDiff[]>((result, diff) => {
+      .reduceRight<SummaryDiff[]>((result, diff) => {
+        if (!summaryDiff(diff)) return result
         if (seen.has(diff.file)) return result
         seen.add(diff.file)
         result.push(diff)
@@ -267,14 +274,12 @@ export function SessionTurn(
       if (!msg) return emptyAssistant
 
       const messages = allMessages() ?? emptyMessages
-      const index = messageIndex()
-      if (index < 0) return emptyAssistant
+      if (messageIndex() < 0) return emptyAssistant
 
       const result: AssistantMessage[] = []
-      for (let i = index + 1; i < messages.length; i++) {
+      for (let i = 0; i < messages.length; i++) {
         const item = messages[i]
         if (!item) continue
-        if (item.role === "user") break
         if (item.role === "assistant" && item.parentID === msg.id) result.push(item as AssistantMessage)
       }
       return result
@@ -313,6 +318,7 @@ export function SessionTurn(
     const msg = error()?.data?.message
     if (typeof msg === "string") return unwrap(msg)
     if (msg === undefined || msg === null) return ""
+    // oxlint-disable-next-line no-base-to-string -- msg is unknown from error data, coercion is intentional
     return unwrap(String(msg))
   })
 
@@ -427,45 +433,35 @@ export function SessionTurn(
               </Show>
               <SessionRetry status={status()} show={active()} />
               <Show when={edited() > 0 && !working()}>
-                <div data-slot="session-turn-diffs">
-                  <Collapsible open={open()} onOpenChange={(value) => setState("open", value)} variant="ghost">
-                    <Collapsible.Trigger>
-                      <div data-component="session-turn-diffs-trigger">
-                        <div data-slot="session-turn-diffs-title">
-                          <span data-slot="session-turn-diffs-label">{i18n.t("ui.sessionReview.change.modified")}</span>
-                          <span data-slot="session-turn-diffs-count">
-                            {edited()} {i18n.t(edited() === 1 ? "ui.common.file.one" : "ui.common.file.other")}
-                          </span>
-                          <div data-slot="session-turn-diffs-meta">
-                            <DiffChanges changes={diffs()} variant="bars" />
-                            <Collapsible.Arrow />
-                          </div>
-                          <div data-slot="session-turn-response">
-                            <Markdown
-                              data-slot="session-turn-markdown"
-                              data-diffs={hasDiffs()}
-                              text={response() ?? ""}
-                              cacheKey={responsePartId()}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </Collapsible.Trigger>
-                    <Collapsible.Content>
-                      <Show when={open()}>
-                        <div data-component="session-turn-diffs-content">
-                          <Accordion
-                            multiple
-                            style={{ "--sticky-accordion-offset": "40px" }}
-                            value={expanded()}
-                            onChange={(value) =>
-                              setState("expanded", Array.isArray(value) ? value : value ? [value] : [])
-                            }
-                          >
-                            <For each={diffs()}>
-                              {(diff) => {
-                                const active = createMemo(() => expanded().includes(diff.file))
-                                const [visible, setVisible] = createSignal(false)
+                <div
+                  data-slot="session-turn-diffs"
+                  data-component="session-turn-diffs-group"
+                  data-show-all={showAll() || undefined}
+                >
+                  <div data-slot="session-turn-diffs-header">
+                    <span data-slot="session-turn-diffs-label">
+                      {edited()} {i18n.t("ui.sessionTurn.diffs.changed")}{" "}
+                      {i18n.t(edited() === 1 ? "ui.common.file.one" : "ui.common.file.other")}
+                    </span>
+                    <DiffChanges changes={diffs()} />
+                    <Show when={overflow() > 0}>
+                      <span data-slot="session-turn-diffs-toggle" onClick={toggleAll}>
+                        {showAll() ? i18n.t("ui.sessionTurn.diffs.showLess") : i18n.t("ui.sessionTurn.diffs.showAll")}
+                      </span>
+                    </Show>
+                  </div>
+                  <div data-component="session-turn-diffs-content">
+                    <Accordion
+                      multiple
+                      style={{ "--sticky-accordion-offset": "44px" }}
+                      value={expanded()}
+                      onChange={(value) => setState("expanded", Array.isArray(value) ? value : value ? [value] : [])}
+                    >
+                      <For each={visible()}>
+                        {(diff) => {
+                          const view = normalize(diff)
+                          const active = createMemo(() => expanded().includes(diff.file))
+                          const [shown, setShown] = createSignal(false)
 
                           createEffect(
                             on(

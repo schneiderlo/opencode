@@ -1,16 +1,16 @@
 import { createEffect, createMemo, For, Match, Show, Switch } from "solid-js"
 import { useRoute } from "@tui/context/route"
 import { useTheme } from "@tui/context/theme"
-import { useKeybind } from "@tui/context/keybind"
 import { useSync } from "@tui/context/sync"
 import { Locale } from "@/util/locale"
 import type { HeavyRunTool } from "@/tool/heavy_run"
 import { type ToolProps, BlockTool, InlineTool } from "./index"
+import { useCommandShortcut } from "../../keymap"
 
 export function HeavyRun(props: ToolProps<typeof HeavyRunTool>) {
   const { theme } = useTheme()
   const { navigate } = useRoute()
-  const keybind = useKeybind()
+  const child = useCommandShortcut("session.child.first")
   const sync = useSync()
 
   const stage = createMemo(() => {
@@ -154,7 +154,7 @@ export function HeavyRun(props: ToolProps<typeof HeavyRunTool>) {
             <Show when={rows().some((item) => !!item.sessionID)}>
               <box marginTop={1} flexDirection="row" gap={1}>
                 <text style={{ fg: theme.text }}>
-                  {keybind.print("session_child_first")}
+                  {child()}
                   <span style={{ fg: theme.textMuted }}> view subagents</span>
                 </text>
                 <text style={{ fg: theme.textMuted }}>(or click to navigate)</text>

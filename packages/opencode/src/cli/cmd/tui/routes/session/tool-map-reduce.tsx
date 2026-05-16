@@ -1,15 +1,15 @@
 import { createMemo, For, Match, Switch, Show } from "solid-js"
 import { useRoute } from "@tui/context/route"
 import { useTheme } from "@tui/context/theme"
-import { useKeybind } from "@tui/context/keybind"
 import { Locale } from "@/util/locale"
 import type { MapReduceTool } from "@/tool/map_reduce"
 import { type ToolProps, BlockTool, InlineTool } from "./index"
+import { useCommandShortcut } from "../../keymap"
 
 export function MapReduce(props: ToolProps<typeof MapReduceTool>) {
   const { theme } = useTheme()
   const { navigate } = useRoute()
-  const keybind = useKeybind()
+  const child = useCommandShortcut("session.child.next")
 
   const tasks = createMemo(() => {
     const inputTasks = props.input.tasks ?? []
@@ -79,7 +79,7 @@ export function MapReduce(props: ToolProps<typeof MapReduceTool>) {
 
             <box marginTop={1} flexDirection="row" gap={1}>
               <text style={{ fg: theme.text }}>
-                {keybind.print("session_child_cycle")}
+                {child()}
                 <span style={{ fg: theme.textMuted }}> view subagents</span>
               </text>
               <text style={{ fg: theme.textMuted }}>(or click to navigate)</text>

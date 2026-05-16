@@ -1,16 +1,16 @@
-import { Tool } from "./tool"
+import * as Tool from "./tool"
 import DESCRIPTION from "./map_reduce.txt"
 import z from "zod"
-import { Session } from "../session"
+import * as Session from "@/session/session"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { SessionPrompt } from "../session/prompt"
-import { iife } from "@/util/iife"
-import { defer } from "@/util/defer"
 import { Config } from "../config/config"
-import { PermissionNext } from "@/permission/next"
-import { MessageID } from "../session/schema"
+import { Permission } from "@/permission"
+import { MessageID, type SessionID } from "../session/schema"
+import { Cause, Effect, Exit } from "effect"
+import { EffectBridge } from "@/effect/bridge"
 
 const parameters = z.object({
   tasks: z
@@ -25,195 +25,224 @@ const parameters = z.object({
     .describe("List of tasks to execute in parallel"),
 })
 
-export const MapReduceTool = Tool.define("map_reduce", async (ctx) => {
-  return {
+type Input = z.infer<typeof parameters>
+type Status = "pending" | "running" | "completed" | "error"
+type Metadata = {
+  tasks?: Array<{
+    id: string
+    description: string
+    subagent: string
+    sessionId: string
+    status: Status
+    error?: string
+  }>
+}
+
+function message(error: unknown) {
+  if (Cause.isCause(error)) return Cause.pretty(error)
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
+function depth(sessions: Session.Interface, id: SessionID, count = 0): Effect.Effect<number> {
+  return sessions.get(id).pipe(
+    Effect.flatMap((session) => {
+      if (!session.parentID) return Effect.succeed(count)
+      if (count > 10) return Effect.succeed(count)
+      return depth(sessions, session.parentID, count + 1)
+    }),
+    Effect.catch(() => Effect.succeed(count)),
+  )
+}
+
+export const MapReduceTool = Tool.define<typeof parameters, Metadata, never>(
+  "map_reduce",
+  Effect.succeed({
     description: DESCRIPTION,
     parameters,
-    async execute(params: z.infer<typeof parameters>, ctx) {
-      const config = await Config.get()
+    execute: (params: Input, ctx: Tool.Context<Metadata>) =>
+      Effect.gen(function* () {
+        const config = yield* Config.Service
+        const sessions = yield* Session.Service
+        const agents = yield* Agent.Service
+        const prompt = yield* SessionPrompt.Service
+        const bridge = yield* EffectBridge.make()
+        const cfg = yield* config.get()
 
-      // Prepare metadata tracker
-      const tracker = params.tasks.map((task, index) => ({
-        id: Identifier.ascending("tool"),
-        description: task.description,
-        subagent: task.subagent_type,
-        status: "pending" as "pending" | "running" | "completed" | "error",
-        sessionId: "",
-        error: undefined as string | undefined,
-        output: undefined as string | undefined,
-        index,
-      }))
+        const tracker = params.tasks.map((task, index) => ({
+          id: Identifier.ascending("tool"),
+          description: task.description,
+          subagent: task.subagent_type,
+          status: "pending" as Status,
+          sessionId: "",
+          error: undefined as string | undefined,
+          output: undefined as string | undefined,
+          index,
+        }))
 
-      // Helper to update metadata
-      const updateMetadata = () => {
-        ctx.metadata({
-          title: `Map-Reduce: ${params.tasks.length} tasks`,
-          metadata: {
-            tasks: tracker.map((t) => ({
-              id: t.id,
-              description: t.description,
-              subagent: t.subagent,
-              sessionId: t.sessionId,
-              status: t.status,
-              error: t.error,
-            })),
-          },
-        })
-      }
-
-      updateMetadata()
-
-      // Calculate recursion depth to prevent infinite loops
-      let depth = 0
-      let currentID = ctx.sessionID
-      while (true) {
-        try {
-          const session = await Session.get(currentID)
-          if (!session.parentID) break
-          depth++
-          currentID = session.parentID
-          if (depth > 10) break
-        } catch {
-          break
-        }
-      }
-
-      // Allow recursion up to depth 3 (Main -> Level 1 -> Level 2 -> Level 3)
-      const allowRecursion = depth < 3
-
-      console.log(`[MapReduce] Session: ${ctx.sessionID} Depth: ${depth} AllowRecursion: ${allowRecursion}`)
-
-      // Ask for permission for all tasks at once
-      if (!ctx.extra?.bypassAgentCheck) {
-        try {
-          await ctx.ask({
-            permission: "task",
-            patterns: params.tasks.map((t) => t.subagent_type),
-            always: ["*"],
+        const update = () =>
+          ctx.metadata({
+            title: `Map-Reduce: ${params.tasks.length} tasks`,
             metadata: {
-              description: `Execute ${params.tasks.length} tasks in parallel`,
-              count: params.tasks.length,
+              tasks: tracker.map((item) => ({
+                id: item.id,
+                description: item.description,
+                subagent: item.subagent,
+                sessionId: item.sessionId,
+                status: item.status,
+                error: item.error,
+              })),
             },
           })
-        } catch (err: any) {
-          const message = err.message || String(err)
-          tracker.forEach((t) => {
-            t.status = "error"
-            t.error = message
-          })
-          updateMetadata()
-          throw err
+
+        yield* update()
+
+        const count = yield* depth(sessions, ctx.sessionID)
+        const recur = count < 3
+
+        if (!ctx.extra?.bypassAgentCheck) {
+          yield* ctx
+            .ask({
+              permission: "task",
+              patterns: params.tasks.map((task) => task.subagent_type),
+              always: ["*"],
+              metadata: {
+                description: `Execute ${params.tasks.length} tasks in parallel`,
+                count: params.tasks.length,
+              },
+            })
+            .pipe(
+              Effect.catch((error) =>
+                Effect.gen(function* () {
+                  const text = message(error)
+                  for (const item of tracker) {
+                    item.status = "error"
+                    item.error = text
+                  }
+                  yield* update()
+                  return yield* Effect.fail(error)
+                }),
+              ),
+            )
         }
-      }
 
-      // Execute tasks in parallel
-      const results = await Promise.all(
-        params.tasks.map(async (task, index) => {
-          const track = tracker[index]
+        const results = yield* Effect.forEach(
+          params.tasks,
+          (task, index) =>
+            Effect.gen(function* () {
+              const item = tracker[index]
+              const agent = yield* agents.get(task.subagent_type)
+              if (!agent) throw new Error(`Unknown agent type: ${task.subagent_type}`)
 
-          try {
-            const agent = await Agent.get(task.subagent_type)
-            if (!agent) throw new Error(`Unknown agent type: ${task.subagent_type}`)
+              const has = agent.permission.some((rule) => rule.permission === "task")
+              const next = yield* sessions.create({
+                parentID: ctx.sessionID,
+                title: `${task.description} (@${agent.name} subagent)`,
+                permission: [
+                  { permission: "todowrite", pattern: "*", action: "deny" },
+                  { permission: "todoread", pattern: "*", action: "deny" },
+                  ...(recur
+                    ? [
+                        { permission: "map_reduce" as const, pattern: "*", action: "allow" as const },
+                        { permission: "task" as const, pattern: "*", action: "allow" as const },
+                      ]
+                    : !has
+                      ? [{ permission: "task" as const, pattern: "*", action: "deny" as const }]
+                      : []),
+                  ...(cfg.experimental?.primary_tools?.map((name) => ({
+                    pattern: "*",
+                    action: "deny" as const,
+                    permission: name,
+                  })) ?? []),
+                ] satisfies Permission.Ruleset,
+              })
 
-            const hasTaskPermission = agent.permission.some((rule) => rule.permission === "task")
+              item.sessionId = next.id
+              item.status = "running"
+              yield* update()
 
-            // Create session
-            const session = await Session.create({
-              parentID: ctx.sessionID,
-              title: task.description + ` (@${agent.name} subagent)`,
-              permission: [
-                { permission: "todowrite", pattern: "*", action: "deny" },
-                { permission: "todoread", pattern: "*", action: "deny" },
-                ...(allowRecursion
-                  ? ([
-                      { permission: "map_reduce" as const, pattern: "*" as const, action: "allow" as const },
-                      { permission: "task" as const, pattern: "*" as const, action: "allow" as const }, // Needed to spawn sub-sub-agents
-                    ] as const)
-                  : !hasTaskPermission
-                    ? [{ permission: "task" as const, pattern: "*" as const, action: "deny" as const }]
-                    : []),
-                ...(config.experimental?.primary_tools?.map((t) => ({
-                  pattern: "*",
-                  action: "allow" as const,
-                  permission: t,
-                })) ?? []),
-              ],
-            })
+              const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
+              if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
+              const model = agent.model ?? {
+                modelID: msg.info.modelID,
+                providerID: msg.info.providerID,
+              }
 
-            track.sessionId = session.id
-            track.status = "running"
-            updateMetadata()
+              const cancel = prompt.cancel(next.id)
+              function abort() {
+                bridge.fork(cancel)
+              }
 
-            const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
-            if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
+              const result = yield* Effect.acquireUseRelease(
+                Effect.sync(() => {
+                  ctx.abort.addEventListener("abort", abort)
+                }),
+                () =>
+                  Effect.gen(function* () {
+                    const parts = yield* prompt.resolvePromptParts(task.prompt)
+                    return yield* prompt.prompt({
+                      messageID: MessageID.ascending(),
+                      sessionID: next.id,
+                      model,
+                      agent: agent.name,
+                      tools: {
+                        todowrite: false,
+                        todoread: false,
+                        map_reduce: recur,
+                        ...(has ? {} : { task: false }),
+                        ...Object.fromEntries((cfg.experimental?.primary_tools ?? []).map((tool) => [tool, false])),
+                      },
+                      parts,
+                    })
+                  }),
+                (_, exit) =>
+                  Effect.gen(function* () {
+                    if (Exit.hasInterrupts(exit)) yield* cancel
+                  }).pipe(
+                    Effect.ensuring(
+                      Effect.sync(() => {
+                        ctx.abort.removeEventListener("abort", abort)
+                      }),
+                    ),
+                  ),
+              )
 
-            const model = agent.model ?? {
-              modelID: msg.info.modelID,
-              providerID: msg.info.providerID,
-            }
+              const text = result.parts.findLast((part) => part.type === "text")?.text ?? ""
+              item.output = text
+              item.status = "completed"
+              yield* update()
+              return text
+            }).pipe(
+              Effect.catchCause((cause) =>
+                Effect.gen(function* () {
+                  const item = tracker[index]
+                  const text = message(cause)
+                  item.status = "error"
+                  item.error = text
+                  yield* update()
+                  return `Task failed: ${text}`
+                }),
+              ),
+            ),
+          { concurrency: "unbounded" },
+        )
 
-            const messageID = MessageID.ascending()
-
-            // Handle cancellation
-            function cancel() {
-              SessionPrompt.cancel(session.id)
-            }
-            ctx.abort.addEventListener("abort", cancel)
-            using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
-
-            const promptParts = await SessionPrompt.resolvePromptParts(task.prompt)
-
-            const result = await SessionPrompt.prompt({
-              messageID,
-              sessionID: session.id,
-              model: {
-                modelID: model.modelID,
-                providerID: model.providerID,
-              },
-              agent: agent.name,
-              tools: {
-                todowrite: false,
-                todoread: false,
-                map_reduce: !allowRecursion ? false : true,
-                ...(hasTaskPermission ? {} : { task: false }),
-                ...Object.fromEntries((config.experimental?.primary_tools ?? []).map((t) => [t, false])),
-              },
-              parts: promptParts,
-            })
-
-            const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""
-            track.output = text
-            track.status = "completed"
-            updateMetadata()
-
-            return text
-          } catch (e: any) {
-            track.status = "error"
-            track.error = e.message
-            updateMetadata()
-            return `Task failed: ${e.message}`
-          }
-        }),
-      )
-
-      const output = results
-        .map((res, i) => `## Task ${i + 1}: ${params.tasks[i].description}\n\n${res}`)
-        .join("\n\n---\n\n")
-
-      return {
-        title: `Completed ${params.tasks.length} tasks`,
-        metadata: {
-          tasks: tracker.map((t) => ({
-            id: t.id,
-            description: t.description,
-            subagent: t.subagent,
-            sessionId: t.sessionId,
-            status: t.status,
-            error: t.error,
-          })),
-        },
-        output,
-      }
-    },
-  }
-})
+        return {
+          title: `Completed ${params.tasks.length} tasks`,
+          metadata: {
+            tasks: tracker.map((item) => ({
+              id: item.id,
+              description: item.description,
+              subagent: item.subagent,
+              sessionId: item.sessionId,
+              status: item.status,
+              error: item.error,
+            })),
+          },
+          output: results
+            .map((result, index) => `## Task ${index + 1}: ${params.tasks[index].description}\n\n${result}`)
+            .join("\n\n---\n\n"),
+        }
+      }).pipe(Effect.orDie) as unknown as Effect.Effect<Tool.ExecuteResult<Metadata>>,
+  }),
+)

@@ -1,7 +1,7 @@
 import { Agent } from "../agent/agent"
 import { Config } from "../config/config"
 import { MessageV2 } from "../session/message-v2"
-import { Session } from "../session"
+import * as Session from "../session/session"
 import { SessionPrompt } from "../session/prompt"
 import { MessageID } from "../session/schema"
 import type { Tool } from "../tool/tool"
@@ -9,15 +9,18 @@ import { HeavyArtifact } from "./artifact"
 import { HeavyReport } from "./report"
 import { HeavySchema } from "./schema"
 import { RunHtml } from "../report/html"
-import { defer } from "@/util/defer"
+import { Cause, Effect, Exit } from "effect"
+import { EffectBridge } from "@/effect/bridge"
+import { ModelID, ProviderID } from "../provider/schema"
+import { Permission } from "@/permission"
 import z from "zod"
 
 const params = HeavySchema.Input
 
 type Base = {
   model: {
-    modelID: string
-    providerID: string
+    modelID: ModelID
+    providerID: ProviderID
   }
 }
 
@@ -26,6 +29,8 @@ type State = {
   title: string
   mode: "direct" | "heavy"
   agent: "explore" | "general"
+  goal: string
+  deliverable: string
   depth: number
   status: "pending" | "running" | "completed" | "error"
   sessionID: string
@@ -56,92 +61,123 @@ export namespace HeavyService {
   export type Input = z.infer<typeof Input>
 
   const rules = [
-    { permission: "todowrite", pattern: "*", action: "deny" as const },
-    { permission: "todoread", pattern: "*", action: "deny" as const },
-    { permission: "task", pattern: "*", action: "deny" as const },
-    { permission: "map_reduce", pattern: "*", action: "deny" as const },
-    { permission: "heavy_run", pattern: "*", action: "deny" as const },
-    { permission: "edit", pattern: "*", action: "deny" as const },
-    { permission: "write", pattern: "*", action: "deny" as const },
-    { permission: "apply_patch", pattern: "*", action: "deny" as const },
-    { permission: "bash", pattern: "*", action: "deny" as const },
-  ]
+    { permission: "todowrite", pattern: "*", action: "deny" },
+    { permission: "todoread", pattern: "*", action: "deny" },
+    { permission: "task", pattern: "*", action: "deny" },
+    { permission: "map_reduce", pattern: "*", action: "deny" },
+    { permission: "heavy_run", pattern: "*", action: "deny" },
+    { permission: "edit", pattern: "*", action: "deny" },
+    { permission: "write", pattern: "*", action: "deny" },
+    { permission: "apply_patch", pattern: "*", action: "deny" },
+    { permission: "bash", pattern: "*", action: "deny" },
+  ] satisfies Permission.Ruleset
 
-  function json(input: z.ZodType) {
-    return z.toJSONSchema(input) as Record<string, any>
+  function text(error: unknown) {
+    if (Cause.isCause(error)) return Cause.pretty(error)
+    if (error instanceof Error) return error.message
+    return String(error)
   }
 
-  async function model(ctx: Tool.Context): Promise<Base> {
-    const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
-    if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
-    return {
-      model: {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
-      },
-    }
+  function schema(input: z.ZodType) {
+    return z.toJSONSchema(input) as Record<string, unknown>
   }
 
-  async function run(input: {
+  function model(ctx: Tool.Context) {
+    return Effect.gen(function* () {
+      const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
+      if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
+      return {
+        model: {
+          modelID: msg.info.modelID,
+          providerID: msg.info.providerID,
+        },
+      }
+    })
+  }
+
+  function run(input: {
     ctx: Tool.Context
     base: Base
     agent: "explore" | "general"
     title: string
     prompt: string
     format: z.ZodType
-    onStart?: (sessionID: string) => void
+    onStart?: (sessionID: string) => Effect.Effect<void>
   }) {
-    const agent = await Agent.get(input.agent)
-    if (!agent) throw new Error(`Agent not found: ${input.agent}`)
+    return Effect.gen(function* () {
+      const agents = yield* Agent.Service
+      const config = yield* Config.Service
+      const sessions = yield* Session.Service
+      const prompts = yield* SessionPrompt.Service
+      const bridge = yield* EffectBridge.make()
+      const agent = yield* agents.get(input.agent)
+      if (!agent) throw new Error(`Agent not found: ${input.agent}`)
+      const cfg = yield* config.get()
+      const session = yield* sessions.create({
+        parentID: input.ctx.sessionID,
+        title: input.title,
+        permission: [
+          ...rules,
+          ...(cfg.experimental?.primary_tools?.map((item) => ({
+            pattern: "*",
+            action: "deny" as const,
+            permission: item,
+          })) ?? []),
+        ],
+      })
+      if (input.onStart) yield* input.onStart(session.id)
 
-    const cfg = await Config.get()
-    const session = await Session.create({
-      parentID: input.ctx.sessionID,
-      title: input.title,
-      permission: [
-        ...rules,
-        ...(cfg.experimental?.primary_tools?.map((item) => ({
-          pattern: "*",
-          action: "deny" as const,
-          permission: item,
-        })) ?? []),
-      ],
+      const cancel = prompts.cancel(session.id)
+      function abort() {
+        bridge.fork(cancel)
+      }
+
+      const message = yield* Effect.acquireUseRelease(
+        Effect.sync(() => {
+          input.ctx.abort.addEventListener("abort", abort)
+        }),
+        () =>
+          Effect.gen(function* () {
+            const parts = yield* prompts.resolvePromptParts(input.prompt)
+            return yield* prompts.prompt({
+              messageID: MessageID.ascending(),
+              sessionID: session.id,
+              model: input.base.model,
+              agent: agent.name,
+              tools: {
+                "*": true,
+                bash: false,
+                edit: false,
+                write: false,
+                apply_patch: false,
+                task: false,
+                map_reduce: false,
+                heavy_run: false,
+              },
+              format: {
+                type: "json_schema",
+                schema: schema(input.format),
+                retryCount: 1,
+              },
+              parts,
+            })
+          }),
+        (_, exit) =>
+          Effect.gen(function* () {
+            if (Exit.hasInterrupts(exit)) yield* cancel
+          }).pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                input.ctx.abort.removeEventListener("abort", abort)
+              }),
+            ),
+          ),
+      )
+      return {
+        sessionID: session.id,
+        message,
+      }
     })
-    input.onStart?.(session.id)
-
-    const messageID = MessageID.ascending()
-    function cancel() {
-      SessionPrompt.cancel(session.id)
-    }
-    input.ctx.abort.addEventListener("abort", cancel)
-    using _ = defer(() => input.ctx.abort.removeEventListener("abort", cancel))
-
-    const msg = await SessionPrompt.prompt({
-      messageID,
-      sessionID: session.id,
-      model: input.base.model as any,
-      agent: agent.name,
-      tools: {
-        "*": true,
-        bash: false,
-        edit: false,
-        write: false,
-        apply_patch: false,
-        task: false,
-        map_reduce: false,
-        heavy_run: false,
-      },
-      format: {
-        type: "json_schema",
-        schema: json(input.format),
-        retryCount: 1,
-      },
-      parts: await SessionPrompt.resolvePromptParts(input.prompt),
-    })
-    return {
-      sessionID: session.id,
-      message: msg,
-    }
   }
 
   function parse<T>(msg: MessageV2.WithParts, shape: z.ZodType<T>) {
@@ -239,370 +275,418 @@ export namespace HeavyService {
     stage: string
     dir: string
     depth: number
+    plan?: HeavySchema.Plan
     tasks?: State[]
   }) {
-    input.ctx.metadata({
+    return input.ctx.metadata({
       title: "Heavy analysis",
       metadata: {
         stage: input.stage,
         dir: input.dir,
         depth: input.depth,
+        plan: input.plan
+          ? {
+              summary: input.plan.summary,
+              synthesisFocus: input.plan.synthesis_focus,
+            }
+          : undefined,
         tasks: input.tasks,
       },
     })
   }
 
-  async function write(input: { dir: string; task: HeavySchema.Plan["tasks"][number]; result: HeavySchema.Result }) {
-    const id = HeavyArtifact.task(input.task.id || input.task.title)
-    const json = `${input.dir}/tasks/${id}.json`
-    const md = `${input.dir}/tasks/${id}.md`
-    await HeavyArtifact.json(json, { task: input.task, result: input.result })
-    await Bun.write(
-      md,
-      [
-        `# ${input.result.title}`,
-        "",
-        input.result.summary,
-        ...(input.result.details ? ["", input.result.details] : []),
-        "",
-        "## Findings",
-        (input.result.findings.length ? input.result.findings : ["None recorded"]).map((item) => `- ${item}`).join("\n"),
-        "",
-        "## Next Steps",
-        (input.result.next_steps.length ? input.result.next_steps : ["None recorded"]).map((item) => `- ${item}`).join("\n"),
-        ...(input.result.nested
-          ? [
-              "",
-              "## Nested Run",
-              `- Depth: ${input.result.nested.depth}`,
-              `- Report: ${input.result.nested.report}`,
-              `- Artifacts: ${input.result.nested.dir}`,
-            ]
-          : []),
-        "",
-      ].join("\n"),
-    )
-    return { json, md }
+  function write(input: { dir: string; task: HeavySchema.Plan["tasks"][number]; result: HeavySchema.Result }) {
+    return Effect.gen(function* () {
+      const id = HeavyArtifact.task(input.task.id || input.task.title)
+      const json = `${input.dir}/tasks/${id}.json`
+      const md = `${input.dir}/tasks/${id}.md`
+      yield* HeavyArtifact.json(json, { task: input.task, result: input.result })
+      yield* Effect.promise(() =>
+        Bun.write(
+          md,
+          [
+            `# ${input.result.title}`,
+            "",
+            input.result.summary,
+            ...(input.result.details ? ["", input.result.details] : []),
+            "",
+            "## Findings",
+            (input.result.findings.length ? input.result.findings : ["None recorded"])
+              .map((item) => `- ${item}`)
+              .join("\n"),
+            "",
+            "## Next Steps",
+            (input.result.next_steps.length ? input.result.next_steps : ["None recorded"])
+              .map((item) => `- ${item}`)
+              .join("\n"),
+            ...(input.result.nested
+              ? [
+                  "",
+                  "## Nested Run",
+                  `- Depth: ${input.result.nested.depth}`,
+                  `- Report: ${input.result.nested.report}`,
+                  `- Artifacts: ${input.result.nested.dir}`,
+                ]
+              : []),
+            "",
+          ].join("\n"),
+        ),
+      )
+      return { json, md }
+    })
   }
 
-  async function direct(input: {
+  function direct(input: {
     ctx: Tool.Context
     base: Base
     dir: string
+    plan: HeavySchema.Plan
+    states: State[]
     task: HeavySchema.Plan["tasks"][number]
     state: State
     depth: number
   }) {
-    const msg = await run({
-      ctx: input.ctx,
-      base: input.base,
-      agent: input.task.agent,
-      title: `Heavy: ${input.task.title}`,
-      prompt: taskPrompt(input.task, input.depth),
-      format: HeavySchema.Result,
-      onStart(sessionID) {
-        input.state.sessionID = sessionID
-        update({
-          ctx: input.ctx,
-          stage: "executing",
-          dir: input.dir,
-          depth: input.depth,
-        })
-      },
+    return Effect.gen(function* () {
+      const msg = yield* run({
+        ctx: input.ctx,
+        base: input.base,
+        agent: input.task.agent,
+        title: `Heavy: ${input.task.title}`,
+        prompt: taskPrompt(input.task, input.depth),
+        format: HeavySchema.Result,
+        onStart(sessionID) {
+          input.state.sessionID = sessionID
+          return update({
+            ctx: input.ctx,
+            stage: "executing",
+            dir: input.dir,
+            depth: input.depth,
+            plan: input.plan,
+            tasks: input.states,
+          })
+        },
+      })
+      const result = parse(msg.message, HeavySchema.Result)
+      const file = yield* write({
+        dir: input.dir,
+        task: input.task,
+        result,
+      })
+      return {
+        task: input.task,
+        result,
+        ...file,
+      }
     })
-    const result = parse(msg.message, HeavySchema.Result)
-    const file = await write({
-      dir: input.dir,
-      task: input.task,
-      result,
-    })
-    return {
-      task: input.task,
-      result,
-      ...file,
-    }
   }
 
-  async function nested(input: {
+  function nested(input: {
     ctx: Tool.Context
     base: Base
     root: string
     task: HeavySchema.Plan["tasks"][number]
     depth: number
     max: number
-  }) {
-    const dir = await HeavyArtifact.child(input.root, input.task.id || input.task.title)
-    const out = await flow({
-      ctx: input.ctx,
-      base: input.base,
-      dir,
-      input: {
-        query: input.task.prompt,
-        context: [
-          `Parent task: ${input.task.title}`,
-          `Goal: ${input.task.goal}`,
-          `Deliverable: ${input.task.deliverable}`,
-        ],
-        depth: input.depth + 1,
-        max_depth: input.max,
-      },
-    })
-    return HeavySchema.Result.parse({
-      task_id: input.task.id,
-      title: input.task.title,
-      summary: out.synth.summary,
-      details: [out.synth.answer, "", `Nested report: ${out.reportPath}`].join("\n"),
-      findings: out.synth.key_points,
-      next_steps: out.synth.next_steps,
-      nested: {
-        depth: input.depth + 1,
-        dir: out.dir,
-        report: out.reportPath,
-      },
+  }): Effect.Effect<HeavySchema.Result, unknown, unknown> {
+    return Effect.gen(function* () {
+      const dir = yield* HeavyArtifact.child(input.root, input.task.id || input.task.title)
+      const out = yield* flow({
+        ctx: {
+          ...input.ctx,
+          metadata() {
+            return Effect.void
+          },
+        },
+        base: input.base,
+        dir,
+        input: {
+          query: input.task.prompt,
+          context: [
+            `Parent task: ${input.task.title}`,
+            `Goal: ${input.task.goal}`,
+            `Deliverable: ${input.task.deliverable}`,
+          ],
+          depth: input.depth + 1,
+          max_depth: input.max,
+        },
+      })
+      return HeavySchema.Result.parse({
+        task_id: input.task.id,
+        title: input.task.title,
+        summary: out.synth.summary,
+        details: [out.synth.answer, "", `Nested report: ${out.reportPath}`].join("\n"),
+        findings: out.synth.key_points,
+        next_steps: out.synth.next_steps,
+        nested: {
+          depth: input.depth + 1,
+          dir: out.dir,
+          report: out.reportPath,
+        },
+      })
     })
   }
 
-  async function exec(input: {
+  function exec(input: {
     ctx: Tool.Context
     base: Base
     dir: string
+    plan: HeavySchema.Plan
+    states: State[]
     task: HeavySchema.Plan["tasks"][number]
     state: State
     depth: number
     max: number
-  }) {
+  }): Effect.Effect<Task, unknown, unknown> {
     if (input.task.mode !== "heavy" || input.depth >= input.max) {
       return direct(input)
     }
 
     input.state.preview = `Nested heavy run at depth ${input.depth + 1}`
-    update({
-      ctx: input.ctx,
-      stage: "executing",
-      dir: input.dir,
-      depth: input.depth,
+    return Effect.gen(function* () {
+      yield* update({
+        ctx: input.ctx,
+        stage: "executing",
+        dir: input.dir,
+        depth: input.depth,
+        plan: input.plan,
+        tasks: input.states,
+      })
+      const result = yield* nested({
+        ctx: input.ctx,
+        base: input.base,
+        root: input.dir,
+        task: input.task,
+        depth: input.depth,
+        max: input.max,
+      })
+      input.state.reportPath = result.nested?.report ?? ""
+      const file = yield* write({
+        dir: input.dir,
+        task: input.task,
+        result,
+      })
+      return {
+        task: input.task,
+        result,
+        ...file,
+      }
     })
-    const result = await nested({
-      ctx: input.ctx,
-      base: input.base,
-      root: input.dir,
-      task: input.task,
-      depth: input.depth,
-      max: input.max,
-    })
-    input.state.reportPath = result.nested?.report ?? ""
-    const file = await write({
-      dir: input.dir,
-      task: input.task,
-      result,
-    })
-    return {
-      task: input.task,
-      result,
-      ...file,
-    }
   }
 
-  async function flow(input: { ctx: Tool.Context; base: Base; dir: string; input: Input }): Promise<Run> {
-    const requestPath = `${input.dir}/request.json`
-    const planPath = `${input.dir}/plan.json`
-    const synthesisPath = `${input.dir}/synthesis.json`
-    const reportPath = `${input.dir}/HEAVY_REPORT.md`
-    const reportHtmlPath = `${input.dir}/HEAVY_REPORT.html`
-    await HeavyArtifact.json(requestPath, input.input)
+  function flow(input: { ctx: Tool.Context; base: Base; dir: string; input: Input }): Effect.Effect<Run, unknown, unknown> {
+    return Effect.gen(function* () {
+      const requestPath = `${input.dir}/request.json`
+      const planPath = `${input.dir}/plan.json`
+      const synthesisPath = `${input.dir}/synthesis.json`
+      const reportPath = `${input.dir}/HEAVY_REPORT.md`
+      const reportHtmlPath = `${input.dir}/HEAVY_REPORT.html`
+      yield* HeavyArtifact.json(requestPath, input.input)
 
-    update({
-      ctx: input.ctx,
-      stage: "planning",
-      dir: input.dir,
-      depth: input.input.depth,
-    })
-
-    const planMsg = await run({
-      ctx: input.ctx,
-      base: input.base,
-      agent: "general",
-      title: `Heavy planning (${input.input.depth})`,
-      prompt: planPrompt(input.input),
-      format: HeavySchema.Plan,
-    })
-    const plan = parse(planMsg.message, HeavySchema.Plan)
-    await HeavyArtifact.json(planPath, plan)
-
-    const states: State[] = plan.tasks.map((item) => ({
-      id: item.id,
-      title: item.title,
-      mode: item.mode,
-      agent: item.agent,
-      depth: input.input.depth,
-      status: "pending",
-      sessionID: "",
-      preview: "",
-      reportPath: "",
-    }))
-    update({
-      ctx: input.ctx,
-      stage: "executing",
-      dir: input.dir,
-      depth: input.input.depth,
-      tasks: states,
-    })
-
-    const tasks: Task[] = await Promise.all(
-      plan.tasks.map(async (item, i) => {
-        const state = states[i]
-        state.status = "running"
-        update({
-          ctx: input.ctx,
-          stage: "executing",
-          dir: input.dir,
-          depth: input.input.depth,
-          tasks: states,
-        })
-        try {
-          const out = await exec({
-            ctx: input.ctx,
-            base: input.base,
-            dir: input.dir,
-            task: item,
-            state,
-            depth: input.input.depth,
-            max: input.input.max_depth,
-          })
-          state.status = "completed"
-          state.preview = preview(out.result)
-          state.reportPath = out.result.nested?.report ?? state.reportPath
-          update({
-            ctx: input.ctx,
-            stage: "executing",
-            dir: input.dir,
-            depth: input.input.depth,
-            tasks: states,
-          })
-          return out
-        } catch (err: any) {
-          state.status = "error"
-          state.preview = err?.message ?? String(err)
-          update({
-            ctx: input.ctx,
-            stage: "executing",
-            dir: input.dir,
-            depth: input.input.depth,
-            tasks: states,
-          })
-          throw err
-        }
-      }),
-    )
-
-    update({
-      ctx: input.ctx,
-      stage: "synthesizing",
-      dir: input.dir,
-      depth: input.input.depth,
-      tasks: states,
-    })
-    const synthMsg = await run({
-      ctx: input.ctx,
-      base: input.base,
-      agent: "general",
-      title: `Heavy synthesis (${input.input.depth})`,
-      prompt: synthPrompt({
-        query: input.input.query,
-        plan,
-        results: tasks.map((item) => item.result),
-        depth: input.input.depth,
-      }),
-      format: HeavySchema.Synthesis,
-    })
-    const synth = normalize({
-      results: tasks.map((item) => item.result),
-      synth: parse(synthMsg.message, HeavySchema.Synthesis),
-    })
-    await HeavyArtifact.json(synthesisPath, synth)
-
-    const paths = HeavySchema.Paths.parse({
-      root: input.dir,
-      request: requestPath,
-      plan: planPath,
-      tasks: tasks.map((item) => item.json),
-      synthesis: synthesisPath,
-      report: reportPath,
-      report_html: reportHtmlPath,
-      nested: tasks.flatMap((item) => (item.result.nested ? [item.result.nested.dir] : [])),
-    })
-    await HeavyArtifact.json(`${input.dir}/paths.json`, paths)
-
-    await Bun.write(
-      reportPath,
-      HeavyReport.render({
-        query: input.input.query,
-        plan,
-        tasks,
-        synth,
-      }),
-    )
-    await Bun.write(
-      reportHtmlPath,
-      RunHtml.heavy({
+      yield* update({
+        ctx: input.ctx,
+        stage: "planning",
         dir: input.dir,
-        query: input.input.query,
+        depth: input.input.depth,
+      })
+
+      const planMsg = yield* run({
+        ctx: input.ctx,
+        base: input.base,
+        agent: "general",
+        title: `Heavy planning (${input.input.depth})`,
+        prompt: planPrompt(input.input),
+        format: HeavySchema.Plan,
+      })
+      const plan = parse(planMsg.message, HeavySchema.Plan)
+      yield* HeavyArtifact.json(planPath, plan)
+
+      const states: State[] = plan.tasks.map((item) => ({
+        id: item.id,
+        title: item.title,
+        mode: item.mode,
+        agent: item.agent,
+        goal: item.goal,
+        deliverable: item.deliverable,
+        depth: input.input.depth,
+        status: "pending",
+        sessionID: "",
+        preview: "",
+        reportPath: "",
+      }))
+      yield* update({
+        ctx: input.ctx,
+        stage: "executing",
+        dir: input.dir,
+        depth: input.input.depth,
         plan,
-        tasks,
-        synth,
-        report: HeavyReport.render({
+        tasks: states,
+      })
+
+      const tasks = yield* Effect.forEach(
+        plan.tasks,
+        (item, index) =>
+          Effect.gen(function* () {
+            const state = states[index]
+            state.status = "running"
+            yield* update({
+              ctx: input.ctx,
+              stage: "executing",
+              dir: input.dir,
+              depth: input.input.depth,
+              plan,
+              tasks: states,
+            })
+            const out = yield* exec({
+              ctx: input.ctx,
+              base: input.base,
+              dir: input.dir,
+              plan,
+              states,
+              task: item,
+              state,
+              depth: input.input.depth,
+              max: input.input.max_depth,
+            }).pipe(
+              Effect.catchCause((cause) =>
+                Effect.gen(function* () {
+                  state.status = "error"
+                  state.preview = text(cause)
+                  yield* update({
+                    ctx: input.ctx,
+                    stage: "executing",
+                    dir: input.dir,
+                    depth: input.input.depth,
+                    plan,
+                    tasks: states,
+                  })
+                  return yield* Effect.failCause(cause)
+                }),
+              ),
+            )
+            state.status = "completed"
+            state.preview = preview(out.result)
+            state.reportPath = out.result.nested?.report ?? state.reportPath
+            yield* update({
+              ctx: input.ctx,
+              stage: "executing",
+              dir: input.dir,
+              depth: input.input.depth,
+              plan,
+              tasks: states,
+            })
+            return out
+          }),
+        { concurrency: "unbounded" },
+      )
+
+      yield* update({
+        ctx: input.ctx,
+        stage: "synthesizing",
+        dir: input.dir,
+        depth: input.input.depth,
+        plan,
+        tasks: states,
+      })
+      const synthMsg = yield* run({
+        ctx: input.ctx,
+        base: input.base,
+        agent: "general",
+        title: `Heavy synthesis (${input.input.depth})`,
+        prompt: synthPrompt({
           query: input.input.query,
           plan,
-          tasks,
-          synth,
+          results: tasks.map((item) => item.result),
+          depth: input.input.depth,
         }),
+        format: HeavySchema.Synthesis,
+      })
+      const synth = normalize({
+        results: tasks.map((item) => item.result),
+        synth: parse(synthMsg.message, HeavySchema.Synthesis),
+      })
+      yield* HeavyArtifact.json(synthesisPath, synth)
+
+      const paths = HeavySchema.Paths.parse({
+        root: input.dir,
+        request: requestPath,
+        plan: planPath,
+        tasks: tasks.map((item) => item.json),
+        synthesis: synthesisPath,
+        report: reportPath,
+        report_html: reportHtmlPath,
+        nested: tasks.flatMap((item) => (item.result.nested ? [item.result.nested.dir] : [])),
+      })
+      yield* HeavyArtifact.json(`${input.dir}/paths.json`, paths)
+
+      const report = HeavyReport.render({
+        query: input.input.query,
+        plan,
+        tasks,
+        synth,
+      })
+      yield* Effect.promise(() => Bun.write(reportPath, report))
+      yield* Effect.promise(() =>
+        Bun.write(
+          reportHtmlPath,
+          RunHtml.heavy({
+            dir: input.dir,
+            query: input.input.query,
+            plan,
+            tasks,
+            synth,
+            report,
+            reportPath,
+            reportHtmlPath,
+          }),
+        ),
+      )
+
+      yield* update({
+        ctx: input.ctx,
+        stage: "completed",
+        dir: input.dir,
+        depth: input.input.depth,
+        plan,
+        tasks: states,
+      })
+
+      return {
+        dir: input.dir,
         reportPath,
         reportHtmlPath,
-      }),
-    )
-
-    update({
-      ctx: input.ctx,
-      stage: "completed",
-      dir: input.dir,
-      depth: input.input.depth,
-      tasks: states,
+        paths,
+        plan,
+        states,
+        tasks,
+        synth,
+      }
     })
-
-    return {
-      dir: input.dir,
-      reportPath,
-      reportHtmlPath,
-      paths,
-      plan,
-      states,
-      tasks,
-      synth,
-    }
   }
 
-  export async function execute(input: { input: Input; ctx: Tool.Context }) {
-    const cfg = Input.parse(input.input)
-    await input.ctx.ask({
-      permission: "heavy_run",
-      patterns: [cfg.query.slice(0, 120)],
-      always: ["*"],
-      metadata: {
-        query: cfg.query,
-        maxDepth: cfg.max_depth,
-      },
-    })
+  export function execute(input: { input: Input; ctx: Tool.Context }): Effect.Effect<Run, unknown, unknown> {
+    return Effect.gen(function* () {
+      const cfg = Input.parse(input.input)
+      yield* input.ctx.ask({
+        permission: "heavy_run",
+        patterns: [cfg.query.slice(0, 120)],
+        always: ["*"],
+        metadata: {
+          query: cfg.query,
+          maxDepth: cfg.max_depth,
+        },
+      })
 
-    const base = await model(input.ctx)
-    const dir = await HeavyArtifact.init({
-      sessionID: input.ctx.sessionID,
-      messageID: input.ctx.messageID,
-    })
-    return flow({
-      ctx: input.ctx,
-      base,
-      dir,
-      input: cfg,
+      const base = yield* model(input.ctx)
+      const dir = yield* HeavyArtifact.init({
+        sessionID: input.ctx.sessionID,
+        messageID: input.ctx.messageID,
+      })
+      return yield* flow({
+        ctx: input.ctx,
+        base,
+        dir,
+        input: cfg,
+      })
     })
   }
 }
